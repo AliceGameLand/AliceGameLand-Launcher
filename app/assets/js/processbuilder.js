@@ -9,6 +9,7 @@ const os                    = require('os')
 const path                  = require('path')
 
 const ConfigManager            = require('./configmanager')
+const { disableTutorial }      = require('./gameoptions')
 
 const logger = LoggerUtil.getLogger('ProcessBuilder')
 
@@ -50,6 +51,7 @@ class ProcessBuilder {
             throw new Error('A Microsoft account is required to launch Minecraft.')
         }
         fs.ensureDirSync(this.gameDir)
+        disableTutorial(this.gameDir)
         this.quarantineUnmanagedMods()
         const tempNativePath = path.join(os.tmpdir(), ConfigManager.getTempNativeFolder(), crypto.pseudoRandomBytes(16).toString('hex'))
         process.throwDeprecation = true
