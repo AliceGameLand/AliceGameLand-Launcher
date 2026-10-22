@@ -7,6 +7,11 @@ copyright: 'Copyright © 2026 JooHwan Kim. Helios Launcher © Daniel Scalzi.'
 asar: true
 compression: 'maximum'
 
+publish:
+  provider: github
+  owner: AliceGameLand
+  repo: AliceGameLand-Launcher
+
 files:
   - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
 

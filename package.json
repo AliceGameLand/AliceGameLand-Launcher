@@ -5,9 +5,9 @@
   "description": "앨리스의 게임랜드 Minecraft 런처",
   "author": "JooHwan Kim <gptnr2140@gmail.com>",
   "license": "UNLICENSED",
-  "homepage": "https://github.com/Dot0420/AliceGameLand-Launcher",
+  "homepage": "https://github.com/AliceGameLand/AliceGameLand-Launcher",
   "bugs": {
-    "url": "https://github.com/Dot0420/AliceGameLand-Launcher/issues"
+    "url": "https://github.com/AliceGameLand/AliceGameLand-Launcher/issues"
   },
   "private": true,
   "main": "index.js",
@@ -50,6 +50,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Dot0420/AliceGameLand-Launcher.git"
+    "url": "git+https://github.com/AliceGameLand/AliceGameLand-Launcher.git"
   }
 }

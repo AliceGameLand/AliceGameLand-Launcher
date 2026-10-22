@@ -6,7 +6,7 @@
 
 Microsoft 로그인 활성화 전 `app/assets/config/auth.json`의 `azureClientId`를 본인 소유 Entra 애플리케이션 ID로 교체해야 합니다. 로컬 테스트에서는 `ALICE_MS_CLIENT_ID` 환경 변수로 덮어쓸 수 있습니다.
 
-<p align="center"><a href="https://github.com/Dot0420/AliceGameLand-Launcher/actions"><img src="https://img.shields.io/github/actions/workflow/status/Dot0420/AliceGameLand-Launcher/build.yml?style=for-the-badge" alt="GitHub Actions"></a> <a href="https://github.com/Dot0420/AliceGameLand-Launcher/releases"><img src="https://img.shields.io/github/downloads/Dot0420/AliceGameLand-Launcher/total.svg?style=for-the-badge" alt="다운로드"></a></p>
+<p align="center"><a href="https://github.com/AliceGameLand/AliceGameLand-Launcher/actions"><img src="https://img.shields.io/github/actions/workflow/status/AliceGameLand/AliceGameLand-Launcher/build.yml?style=for-the-badge" alt="GitHub Actions"></a> <a href="https://github.com/AliceGameLand/AliceGameLand-Launcher/releases"><img src="https://img.shields.io/github/downloads/AliceGameLand/AliceGameLand-Launcher/total.svg?style=for-the-badge" alt="다운로드"></a></p>
 
 <p align="center">Minecraft 26.2와 NeoForge 26.2.0.59를 자동 설치하고 앨리스 서버의 모드와 게임 파일을 관리합니다.</p>
 
@@ -42,18 +42,18 @@ This is not an exhaustive list. Download and install the launcher to gauge all i
 
 ## Downloads
 
-You can download from [GitHub Releases](https://github.com/Dot0420/AliceGameLand-Launcher/releases)
+You can download from [GitHub Releases](https://github.com/AliceGameLand/AliceGameLand-Launcher/releases)
 
 #### Latest Release
 
-[![](https://img.shields.io/github/release/Dot0420/AliceGameLand-Launcher.svg?style=flat-square)](https://github.com/Dot0420/AliceGameLand-Launcher/releases/latest)
+[![](https://img.shields.io/github/release/AliceGameLand/AliceGameLand-Launcher.svg?style=flat-square)](https://github.com/AliceGameLand/AliceGameLand-Launcher/releases/latest)
 
 #### Latest Pre-Release
-[![](https://img.shields.io/github/release/Dot0420/AliceGameLand-Launcher/all.svg?style=flat-square)](https://github.com/Dot0420/AliceGameLand-Launcher/releases)
+[![](https://img.shields.io/github/release/AliceGameLand/AliceGameLand-Launcher/all.svg?style=flat-square)](https://github.com/AliceGameLand/AliceGameLand-Launcher/releases)
 
 **Supported Platforms**
 
-If you download from the [Releases](https://github.com/Dot0420/AliceGameLand-Launcher/releases) tab, select the Windows installer.
+If you download from the [Releases](https://github.com/AliceGameLand/AliceGameLand-Launcher/releases) tab, select the Windows installer.
 
 | Platform | File |
 | -------- | ---- |
@@ -94,7 +94,7 @@ This section details the setup of a basic developmentment environment.
 **Clone and Install Dependencies**
 
 ```console
-> git clone https://github.com/Dot0420/AliceGameLand-Launcher.git
+> git clone https://github.com/AliceGameLand/AliceGameLand-Launcher.git
 > cd HeliosLauncher
 > npm install
 ```

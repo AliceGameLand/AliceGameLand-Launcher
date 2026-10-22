@@ -1433,7 +1433,7 @@ function populateAboutVersionInformation(){
  */
 function populateReleaseNotes(){
     $.ajax({
-        url: 'https://github.com/Dot0420/AliceGameLand-Launcher/releases.atom',
+        url: 'https://github.com/AliceGameLand/AliceGameLand-Launcher/releases.atom',
         success: (data) => {
             const version = 'v' + remote.app.getVersion()
             const entries = $(data).find('entry')
