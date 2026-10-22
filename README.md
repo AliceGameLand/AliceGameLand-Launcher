@@ -30,7 +30,7 @@ Microsoft 로그인 활성화 전 `app/assets/config/auth.json`의 `azureClientI
 * Supports all of our servers.
   * Switch between server configurations with ease.
   * View the player count of the selected server.
-* Discord Rich Presence shows the selected Alice server while the game is running.
+* Discord Rich Presence shows the selected Alice server while the launcher is open and updates when the game starts.
 * Automatic updates. That's right, the launcher updates itself.
 *  View the status of Mojang's services.
 

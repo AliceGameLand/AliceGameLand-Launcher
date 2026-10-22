@@ -9,6 +9,7 @@ const Lang = require('./langloader')
 let client
 let activity
 let connected = false
+let clientId
 
 function publishActivity(){
     if(!connected || !client || !activity) return
@@ -18,12 +19,7 @@ function publishActivity(){
 }
 
 exports.initRPC = function(genSettings, servSettings, initialDetails = Lang.queryJS('discord.waiting')){
-    if(client) exports.shutdownRPC()
-    client = new Client({ transport: 'ipc' })
-    const rpcClient = client
-    connected = false
-
-    activity = {
+    const nextActivity = {
         details: initialDetails,
         state: Lang.queryJS('discord.state', {shortId: servSettings.shortId}),
         largeImageKey: servSettings.largeImageKey,
@@ -33,6 +29,20 @@ exports.initRPC = function(genSettings, servSettings, initialDetails = Lang.quer
         startTimestamp: new Date().getTime(),
         instance: false
     }
+
+    // Reuse the connection when moving between launcher and game activity.
+    if(client && clientId === genSettings.clientId){
+        activity = nextActivity
+        publishActivity()
+        return
+    }
+
+    if(client) exports.shutdownRPC()
+    client = new Client({ transport: 'ipc' })
+    const rpcClient = client
+    clientId = genSettings.clientId
+    connected = false
+    activity = nextActivity
 
     rpcClient.on('ready', () => {
         if(client !== rpcClient) return
@@ -61,6 +71,7 @@ exports.shutdownRPC = function(){
     const rpcClient = client
     const wasConnected = connected
     client = null
+    clientId = null
     activity = null
     connected = false
     Promise.resolve()

@@ -165,7 +165,7 @@ function updateSelectedAccount(authUser){
 updateSelectedAccount(ConfigManager.getSelectedAccount())
 
 // Bind selected server
-function updateSelectedServer(serv){
+function updateSelectedServer(serv, distro){
     if(getCurrentView() === VIEWS.settings){
         fullSettingsSave()
     }
@@ -176,6 +176,15 @@ function updateSelectedServer(serv){
         animateSettingsTabRefresh()
     }
     setLaunchEnabled(serv != null)
+    if(distro != null){
+        syncLauncherDiscordPresence(distro, serv)
+    } else {
+        DistroAPI.getDistribution().then(data => {
+            if(ConfigManager.getSelectedServer() === serv?.rawServer.id){
+                syncLauncherDiscordPresence(data, serv)
+            }
+        }).catch(err => loggerLanding.warn('Unable to update Discord presence for the selected server.', err))
+    }
 }
 // Real text is set in uibinder.js on distributionIndexDone.
 server_selection_button.innerHTML = '&#8226; ' + Lang.queryJS('landing.selectedServer.loading')
@@ -301,8 +310,32 @@ function showLaunchFailure(title, desc){
 
 // Keep reference to Minecraft Process
 let proc
-// Is DiscordRPC enabled
+// Discord presence follows the selected server until a game starts.
 let hasRPC = false
+let discordPresenceMode = null
+let discordPresenceServerId = null
+
+function syncLauncherDiscordPresence(distro, serv){
+    if(proc != null) return
+
+    const genSettings = distro?.rawDistribution.discord
+    const servSettings = serv?.rawServer.discord
+    if(genSettings == null || servSettings == null){
+        if(hasRPC) DiscordWrapper.shutdownRPC()
+        hasRPC = false
+        discordPresenceMode = null
+        discordPresenceServerId = null
+        return
+    }
+
+    const serverId = serv.rawServer.id
+    if(discordPresenceMode === 'launcher' && discordPresenceServerId === serverId) return
+
+    DiscordWrapper.initRPC(genSettings, servSettings, Lang.queryJS('discord.launcher'))
+    hasRPC = true
+    discordPresenceMode = 'launcher'
+    discordPresenceServerId = serverId
+}
 const GAME_READY_REGEX = /\]: Sound engine started/
 const SERVER_CONNECTING_REGEX = /ConnectScreen\/\]: Connecting to /
 const GAME_LAUNCH_REGEX = /^\[.+\]: (?:MinecraftForge .+ Initialized|ModLauncher .+ starting: .+|Loading Minecraft .+ with Fabric Loader .+)$/
@@ -432,7 +465,7 @@ async function dlAsync(login = true) {
         let launchResetTimer = null
         let launchAreaReset = false
         const onLoadComplete = () => {
-            if(launchAreaReset){
+            if(launchAreaReset || proc == null){
                 return
             }
             launchAreaReset = true
@@ -501,13 +534,15 @@ async function dlAsync(login = true) {
             if(distro.rawDistribution.discord != null && serv.rawServer.discord != null){
                 DiscordWrapper.initRPC(distro.rawDistribution.discord, serv.rawServer.discord)
                 hasRPC = true
-                proc.on('close', (code, signal) => {
-                    loggerLaunchSuite.info('Shutting down Discord Rich Presence..')
-                    DiscordWrapper.shutdownRPC()
-                    hasRPC = false
-                    proc = null
-                })
+                discordPresenceMode = 'game'
+                discordPresenceServerId = serv.rawServer.id
             }
+            proc.on('close', () => {
+                if(launchResetTimer != null) clearTimeout(launchResetTimer)
+                if(!launchAreaReset) toggleLaunchArea(false)
+                proc = null
+                syncLauncherDiscordPresence(distro, distro.getServerById(ConfigManager.getSelectedServer()))
+            })
 
         } catch(err) {
 

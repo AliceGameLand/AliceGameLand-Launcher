@@ -112,7 +112,7 @@ async function showMainUI(data){
     }
 
     await prepareSettings(true)
-    updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()))
+    updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()), data)
     refreshServerStatus()
     setTimeout(() => {
         document.getElementById('frameBar').style.backgroundColor = 'rgba(0, 0, 0, 0.5)'
@@ -123,7 +123,7 @@ async function showMainUI(data){
 
         // If this is enabled in a development environment we'll get ratelimited.
         // The relaunch frequency is usually far too high.
-        if(!isDev && isLoggedIn){
+        if((!isDev || process.env.ALICE_LOCAL_DISTRIBUTION === '1') && isLoggedIn){
             validateSelectedAccount()
         }
 
@@ -174,7 +174,7 @@ function showFatalStartupError(){
  * @param {Object} data The distro index object.
  */
 function onDistroRefresh(data){
-    updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()))
+    updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()), data)
     refreshServerStatus()
     syncModConfigurations(data)
     ensureJavaSettings(data)
@@ -485,6 +485,6 @@ async function devModeToggle() {
     DistroAPI.toggleDevMode(true)
     const data = await DistroAPI.refreshDistributionOrFallback()
     ensureJavaSettings(data)
-    updateSelectedServer(data.servers[0])
+    updateSelectedServer(data.servers[0], data)
     syncModConfigurations(data)
 }

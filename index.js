@@ -7,6 +7,10 @@ const autoUpdater                       = require('electron-updater').autoUpdate
 const ejse                              = require('ejs-electron')
 const isDev                             = require('./app/assets/js/isdev')
 const path                              = require('path')
+// 로컬 미니게임 실행은 별도 프로필에서 개발 배포 인덱스를 읽는다.
+if(process.env.ALICE_LOCAL_DISTRIBUTION === '1' && process.env.ALICE_LOCAL_PROFILE){
+    app.setPath('userData', path.resolve(process.env.ALICE_LOCAL_PROFILE))
+}
 const semver                            = require('semver')
 const { pathToFileURL }                 = require('url')
 const { AZURE_CLIENT_ID, MSFT_OPCODE, MSFT_REPLY_TYPE, MSFT_ERROR, SHELL_OPCODE } = require('./app/assets/js/ipcconstants')

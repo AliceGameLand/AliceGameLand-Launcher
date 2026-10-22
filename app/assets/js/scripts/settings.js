@@ -1499,7 +1499,7 @@ function settingsUpdateButtonStatus(text, disabled = false, handler = null){
  * 
  * @param {Object} data The update data.
  */
-function populateSettingsUpdateInformation(data){
+function populateSettingsUpdateInformation(data, checked = false){
     if(data != null){
         settingsUpdateTitle.innerHTML = isPrerelease(data.version) ? Lang.queryJS('settings.updates.newPreReleaseTitle') : Lang.queryJS('settings.updates.newReleaseTitle')
         settingsUpdateChangelogCont.style.display = null
@@ -1515,10 +1515,10 @@ function populateSettingsUpdateInformation(data){
             settingsUpdateButtonStatus(Lang.queryJS('settings.updates.downloadingButton'), true)
         }
     } else {
-        settingsUpdateTitle.innerHTML = Lang.queryJS('settings.updates.latestVersionTitle')
+        settingsUpdateTitle.innerHTML = Lang.queryJS(checked ? 'settings.updates.latestVersionTitle' : 'settings.updates.checkUpdatesTitle')
         settingsUpdateChangelogCont.style.display = 'none'
         populateVersionInformation(remote.app.getVersion(), settingsUpdateVersionValue, settingsUpdateVersionTitle, settingsUpdateVersionCheck)
-        settingsUpdateButtonStatus(Lang.queryJS('settings.updates.checkForUpdatesButton'), false, () => {
+        settingsUpdateButtonStatus(Lang.queryJS(checked ? 'settings.updates.latestVersionButton' : 'settings.updates.checkForUpdatesButton'), false, () => {
             if(!isDev){
                 ipcRenderer.send('autoUpdateAction', 'checkForUpdate')
                 settingsUpdateButtonStatus(Lang.queryJS('settings.updates.checkingForUpdatesButton'), true)

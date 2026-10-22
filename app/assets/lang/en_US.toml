@@ -112,6 +112,7 @@ continueButton = "CONTINUE"
 
 
 [js.discord]
+launcher = "Waiting in the launcher"
 waiting = "Starting the game.."
 state = "Server: {shortId}"
 
@@ -244,6 +245,10 @@ stableReleaseTitle = "Stable Release"
 releaseNotesFailed = "Failed to load release notes."
 
 [js.settings.updates]
+checkUpdatesTitle = "Check for updates"
+latestVersionButton = "Up to date · Check again"
+checkFailedTitle = "Unable to check for updates"
+retryButton = "Check failed · Retry"
 newReleaseTitle = "New Release Available"
 newPreReleaseTitle = "New Pre-release Available"
 downloadingButton = "Downloading.."

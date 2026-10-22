@@ -66,7 +66,7 @@ if(!isDev){
                 break
             case 'update-not-available':
                 loggerAutoUpdater.info('No new update found.')
-                settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.checkForUpdatesButton'))
+                populateSettingsUpdateInformation(null, true)
                 break
             case 'ready':
                 updateCheckListener = setInterval(() => {
@@ -75,6 +75,10 @@ if(!isDev){
                 ipcRenderer.send('autoUpdateAction', 'checkForUpdate')
                 break
             case 'realerror':
+                // A failed check must leave a retry action instead of a disabled checking button.
+                populateSettingsUpdateInformation(null)
+                settingsUpdateTitle.innerHTML = Lang.queryJS('settings.updates.checkFailedTitle')
+                settingsUpdateButtonStatus(Lang.queryJS('settings.updates.retryButton'))
                 if(info != null && info.code != null){
                     if(info.code === 'ERR_UPDATER_INVALID_RELEASE_FEED'){
                         loggerAutoUpdater.info('No suitable releases found.')

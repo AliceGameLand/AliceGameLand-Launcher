@@ -11,7 +11,7 @@ const api = new DistributionAPI(
     null, // Injected forcefully by the preloader.
     null, // Injected forcefully by the preloader.
     exports.REMOTE_DISTRO_URL,
-    false
+    process.env.ALICE_LOCAL_DISTRIBUTION === '1'
 )
 
 exports.DistroAPI = api

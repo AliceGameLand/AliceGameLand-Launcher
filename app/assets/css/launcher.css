@@ -3136,41 +3136,13 @@ input:checked + .toggleSwitchSlider:before {
     transition-delay:0s;
 }
 
-/* X icon colors. */
-#xSVG:hover,
-#xURL:focus #xSVG {
-    fill: #000000;
-}
-#xSVG:active {
-    fill: #090909;
-}
-
-/* Instagram icon colors. */
-#instagramSVG:hover,
-#instagramURL:focus #instagramSVG {
-    fill: url('#instaFill')
-    /*fill: radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%); */
-}
-#instagramSVG:active {
-    fill: url('#instaFill')
-}
-
 /* Youtube icon colors. */
-#youtubeSVG:hover,
+#youtubeURL:hover #youtubeSVG,
 #youtubeURL:focus #youtubeSVG {
-    fill: #f00;
+    fill: #ff0000;
 }
 #youtubeSVG:active {
     fill: #ea0202;
-}
-
-/* Discord icon colors. */
-#discordSVG:hover,
-#discordURL:focus #discordSVG {
-    fill: #7288d9;
-}
-#discordSVG:active {
-    fill: #657ac4;
 }
 
 /*******************************************************************************
@@ -4012,12 +3984,45 @@ input:checked + .toggleSwitchSlider:before {
     }
 }
 
-/* Alice GameLand does not expose upstream news or social-media shortcuts. */
+/* Hide the unused upstream news panel. */
 #landingContainer > #lower > #center #content,
-#newsContainer,
-#mediaContent > .mediaDivider,
-#externalMedia {
+#newsContainer {
     display: none !important;
+}
+
+/* Keep the social symbols smaller than the settings icon. */
+#externalMedia .mediaURL {
+    --social-icon-height: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 45px;
+    height: 100%;
+}
+
+#externalMedia .mediaURL:hover,
+#externalMedia .mediaURL:focus {
+    --social-icon-height: 19px;
+}
+
+#youtubeSVG {
+    width: calc(var(--social-icon-height) * 1.44);
+    height: var(--social-icon-height);
+}
+
+#soopSVG {
+    display: block;
+    width: calc(var(--social-icon-height) * 1.76);
+    height: var(--social-icon-height);
+    background-color: #fff;
+    -webkit-mask: url('../images/icons/soop.svg') center / contain no-repeat;
+    mask: url('../images/icons/soop.svg') center / contain no-repeat;
+    transition: background-color 0.25s ease;
+}
+
+#soopURL:hover #soopSVG,
+#soopURL:focus #soopSVG {
+    background-color: #0545b1;
 }
 
 /* The larger launcher window needs proportionate primary controls. */
@@ -4035,6 +4040,7 @@ input:checked + .toggleSwitchSlider:before {
     #mediaContent { width: 84px; height: calc(100% - 109px); }
     .mediaContainer { height: 36px; }
     #settingsSVG { height: 19px; }
+    #externalMedia .mediaURL { --social-icon-height: 15px; }
     .mediaButton:hover #settingsSVG,
     .mediaButton:focus #settingsSVG,
     .mediaButton:active #settingsSVG { height: 23px; }

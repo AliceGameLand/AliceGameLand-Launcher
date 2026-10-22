@@ -4,11 +4,8 @@
 title = "앨리스의 게임랜드"
 
 [ejs.landing]
-mediaGitHubURL = "https://github.com/Dot0420/AliceGameLand-Launcher"
-mediaXURL = "#"
-mediaInstagramURL = "#"
-mediaYouTubeURL = "#"
-mediaDiscordURL = "#"
+mediaYouTubeURL = "https://www.youtube.com/@%EC%95%A8%EB%A6%AC%EC%8A%A4%EC%96%8C"
+mediaSoopURL = "https://www.sooplive.com/station/alicehiyam"
 
 [ejs.settings]
 sourceGithubLink = "https://github.com/Dot0420/AliceGameLand-Launcher"
