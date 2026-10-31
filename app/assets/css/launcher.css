@@ -3893,7 +3893,7 @@ input:checked + .toggleSwitchSlider:before {
     width: 100%;
     height: calc(100% - 22px);
     overflow: hidden;
-    background: #171b1d;
+    background: #ffffff;
 }
 
 /* Reuse the launcher artwork so startup feels like part of the same screen. */
