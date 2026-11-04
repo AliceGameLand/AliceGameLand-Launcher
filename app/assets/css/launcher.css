@@ -3893,7 +3893,7 @@ input:checked + .toggleSwitchSlider:before {
     width: 100%;
     height: calc(100% - 22px);
     overflow: hidden;
-    background: #ffffff;
+    background: #171b1d;
 }
 
 /* Reuse the launcher artwork so startup feels like part of the same screen. */
@@ -3901,7 +3901,7 @@ input:checked + .toggleSwitchSlider:before {
     position: absolute;
     content: '';
     inset: 0;
-    background: linear-gradient(to top, rgba(13, 18, 17, 0.94), rgba(13, 18, 17, 0.54) 48%, rgba(13, 18, 17, 0.14)), url('../images/backgrounds/0.jpg') center / var(--launcher-artwork-width) auto no-repeat;
+    background: linear-gradient(to top, rgba(13, 18, 17, 0.94), rgba(13, 18, 17, 0.54) 48%, rgba(13, 18, 17, 0.14)), url('../images/backgrounds/0.jpg') center / cover no-repeat;
 }
 
 #loadingContent {
