@@ -337,8 +337,9 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
     color: var(--muted);
     font-size: 14px;
 }
+#launch_details_text { font-weight: 600; }
 #launch_progress_label { color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums; }
-#launch_progress { display: block; width: 100%; height: 7px; margin-top: 6px; appearance: none; }
+#launch_progress { display: block; width: 100%; height: 7px; margin-top: 8px; appearance: none; }
 #launch_progress::-webkit-progress-bar { border-radius: 5px; background: var(--blue-wash); }
 #launch_progress::-webkit-progress-value { border-radius: 5px; background: var(--blue); }
 
