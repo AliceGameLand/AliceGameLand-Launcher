@@ -40,9 +40,9 @@ ipcMain.on('autoUpdateAction', (_event, action) => {
         notify('checking-for-update')
         timer = setTimeout(() => {
             notify('update-available', info)
-            timer = setTimeout(() => notify('update-downloaded', info), 1800)
         }, 1200)
     }
+    if(action === 'downloadUpdate') timer = setTimeout(() => notify('update-downloaded', info), 1800)
     if(action === 'installUpdateNow'){
         installed = true
         notify('update-not-available')
@@ -77,6 +77,8 @@ app.whenReady().then(async () => {
     }
     await js(`document.getElementById('launcherUpdateButton').click()`)
     await waitFor(`document.getElementById('settingsTabUpdate').getClientRects().length > 0 && document.getElementById('settingsContainer').getClientRects().length > 0`)
+    await waitFor(`document.getElementById('settingsUpdateActionButton').textContent === '다운로드'`)
+    await js(`document.getElementById('settingsUpdateActionButton').click()`)
     await waitFor(`document.getElementById('settingsUpdateActionButton').textContent.includes('설치')`)
     await new Promise(r=>setTimeout(r,300))
     fs.writeFileSync(path.join(folder,'ready.png'),(await win.webContents.capturePage()).toPNG())
