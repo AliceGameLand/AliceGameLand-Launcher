@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self'">
+    <title>앨리스의 게임랜드 설치</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="titlebar">
+        <div class="brand"><img src="assets/SealCircle.png" alt="" width="24" height="24"><span>앨리스의 게임랜드</span><span id="version"></span></div>
+        <div class="window-actions">
+            <button id="minimize" aria-label="최소화"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+            <button id="close" aria-label="닫기"><svg viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
+        </div>
+    </header>
+    <main>
+        <section class="setup-content">
+            <div id="intro" class="screen">
+                <div><h2 tabindex="-1">설치를 시작할까요?</h2><p class="description">앨리스의 게임랜드에 오신 걸 환영해요.<br>런처를 설치하고 함께 즐겨보세요.</p></div>
+                <div class="install-options">
+                    <label for="destination">설치 위치</label>
+                    <div class="folder-field"><input id="destination" type="text" readonly><button id="browse" aria-label="설치 폴더 변경">변경</button></div>
+                    <details id="scope"><summary>설치 대상 변경</summary><div class="scope-options">
+                        <label><input type="radio" name="mode" value="user" checked> 이 사용자만</label>
+                        <label><input type="radio" name="mode" value="all"> 모든 사용자 <span>관리자 권한 필요</span></label>
+                    </div></details>
+                </div>
+                <p id="error" role="alert" hidden></p>
+                <div class="bottom-action"><p>필요한 Java가 함께 설치됩니다.</p><button id="install" class="primary">설치하기 <svg viewBox="0 0 20 20"><path d="M4 10h12m-5-5 5 5-5 5"/></svg></button></div>
+            </div>
+            <div id="progress" class="screen" hidden>
+                <div><h2 tabindex="-1">게임랜드를 설치하고 있어요</h2><p class="description">설치가 완료되면 런처를 시작할 수 있습니다.</p></div>
+                <div class="progress-block"><div class="progress-readout"><strong id="phase" role="status">설치파일 확인 중</strong><span id="percent"></span></div><progress id="bar" max="100" aria-labelledby="phase"></progress><div id="indeterminate" role="progressbar" aria-labelledby="phase" hidden><span></span></div><p id="progress-note">잠시만 기다려 주세요.</p></div>
+                <ol class="steps"><li id="step-check" aria-current="step"><svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-8"/></svg>설치파일 확인</li><li id="step-install"><svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-8"/></svg>런처 설치</li><li><svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-8"/></svg>시작 준비 완료</li></ol>
+            </div>
+            <div id="complete" class="screen" hidden>
+                <div class="complete-icon"><svg viewBox="0 0 32 32"><path d="m8 16 6 6 12-12"/></svg></div>
+                <div><h2 tabindex="-1">준비됐어요.</h2><p class="description">앨리스의 게임랜드 설치가 완료되었습니다.<br>런처를 열어 플레이를 시작해 보세요.</p></div>
+                <p class="installed-path" id="installed-path"></p>
+                <div class="complete-actions"><button id="launch" class="primary">런처 시작하기 <svg viewBox="0 0 20 20"><path d="m7 4 8 6-8 6Z"/></svg></button><button id="finish" class="quiet">나중에 시작할게요</button></div>
+                <p id="launch-error" role="alert" hidden></p>
+            </div>
+        </section>
+    </main>
+    <script src="renderer.js"></script>
+</body>
+</html>

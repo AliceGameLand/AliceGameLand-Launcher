@@ -13,7 +13,7 @@ publish:
   repo: AliceGameLand-Launcher
 
 files:
-  - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
+  - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,.impeccable,PRODUCT.md,DESIGN.md,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
 
 extraResources:
   - 'libraries'
