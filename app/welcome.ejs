@@ -1,25 +1,12 @@
-<div id="welcomeContainer" style="display: none;">
-    <!--<div class="cloudDiv">
-        <div class="cloudTop"></div>
-        <div class="cloudBottom"></div>
-    </div>-->
-    <div id="welcomeContent">
-        <img id="welcomeImageSeal" src="assets/images/SealCircle.png"/>
-        <span id="welcomeHeader"><%- lang('welcome.welcomeHeader') %></span>
-        <span id="welcomeDescription"><%- lang('welcome.welcomeDescription') %></span>
-        <br>
-        <span id="welcomeDescCTA"><%- lang('welcome.welcomeDescCTA') %></span>
-        <button id="welcomeButton">
-            <div id="welcomeButtonContent">
-                <%- lang('welcome.continueButton') %>
-                <svg id="welcomeSVG" viewBox="0 0 24.87 13.97">
-                    <defs>
-                        <style>.arrowLine{fill:none;stroke:#FFF;stroke-width:2px;transition: 0.25s ease;}</style>
-                    </defs>
-                    <polyline class="arrowLine" points="0.71 13.26 12.56 1.41 24.16 13.02"/>
-                </svg>
-            </div>
-        </button>
+<div id="welcomeContainer" class="entry-view" style="display: none;">
+    <div class="entry-layout">
+        <img class="entry-garden" src="assets/images/backgrounds/0.jpg" width="1500" height="843" alt="">
+        <div id="welcomeContent" class="entry-panel">
+            <img id="welcomeImageSeal" class="entry-mascot" src="assets/images/SealCircle.png" width="92" height="92" alt="">
+            <h1 id="welcomeHeader"><%= lang('welcome.welcomeHeader') %></h1>
+            <p id="welcomeDescription"><%= lang('welcome.welcomeDescription') %></p>
+            <button id="welcomeButton" class="primary-button" type="button"><%= lang('welcome.continueButton') %></button>
+        </div>
     </div>
     <script src="./assets/js/scripts/welcome.js"></script>
 </div>

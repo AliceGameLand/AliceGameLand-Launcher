@@ -9,38 +9,6 @@ const settingsState = {
     invalid: new Set()
 }
 
-function bindSettingsSelect(){
-    for(let ele of document.getElementsByClassName('settingsSelectContainer')) {
-        const selectedDiv = ele.getElementsByClassName('settingsSelectSelected')[0]
-
-        selectedDiv.onclick = (e) => {
-            e.stopPropagation()
-            closeSettingsSelect(e.target)
-            e.target.nextElementSibling.toggleAttribute('hidden')
-            e.target.classList.toggle('select-arrow-active')
-        }
-    }
-}
-
-function closeSettingsSelect(el){
-    for(let ele of document.getElementsByClassName('settingsSelectContainer')) {
-        const selectedDiv = ele.getElementsByClassName('settingsSelectSelected')[0]
-        const optionsDiv = ele.getElementsByClassName('settingsSelectOptions')[0]
-
-        if(!(selectedDiv === el)) {
-            selectedDiv.classList.remove('select-arrow-active')
-            optionsDiv.setAttribute('hidden', '')
-        }
-    }
-}
-
-/* If the user clicks anywhere outside the select box,
-then close all select boxes: */
-document.addEventListener('click', closeSettingsSelect)
-
-bindSettingsSelect()
-
-
 function bindFileSelectors(){
     for(let ele of document.getElementsByClassName('settingsFileSelButton')){
         
@@ -96,22 +64,18 @@ function initSettingsValidators(){
         if(typeof vFn === 'function'){
             if(v.tagName === 'INPUT'){
                 if(v.type === 'number' || v.type === 'text'){
-                    v.addEventListener('keyup', (e) => {
-                        const v = e.target
-                        if(!vFn(v.value)){
-                            settingsState.invalid.add(v.id)
-                            v.setAttribute('error', '')
-                            settingsSaveDisabled(true)
-                        } else {
-                            if(v.hasAttribute('error')){
-                                v.removeAttribute('error')
-                                settingsState.invalid.delete(v.id)
-                                if(settingsState.invalid.size === 0){
-                                    settingsSaveDisabled(false)
-                                }
-                            }
-                        }
-                    })
+                    const validate = () => {
+                        const valid = vFn(v.value) && v.validity.valid
+                        v.toggleAttribute('error', !valid)
+                        v.setAttribute('aria-invalid', String(!valid))
+                        if(valid) settingsState.invalid.delete(v.id)
+                        else settingsState.invalid.add(v.id)
+                        settingsSaveDisabled(settingsState.invalid.size > 0)
+                        document.getElementById('settingsResolutionError').hidden =
+                            !['settingsGameWidth', 'settingsGameHeight'].some(id => settingsState.invalid.has(id))
+                    }
+                    v.addEventListener('input', validate)
+                    v.addEventListener('change', validate)
                 }
             }
         }
@@ -131,6 +95,7 @@ async function initSettingsValues(){
         const gFn = ConfigManager['get' + cVal]
         const gFnOpts = []
         if(serverDependent) {
+            if(ConfigManager.getSelectedServer() == null) continue
             gFnOpts.push(ConfigManager.getSelectedServer())
         }
         if(typeof gFn === 'function'){
@@ -183,6 +148,7 @@ function saveSettingsValues(){
         const sFn = ConfigManager['set' + cVal]
         const sFnOpts = []
         if(serverDependent) {
+            if(ConfigManager.getSelectedServer() == null) return
             sFnOpts.push(ConfigManager.getSelectedServer())
         }
         if(typeof sFn === 'function'){
@@ -276,38 +242,20 @@ function settingsNavItemListener(ele, fade = true){
     for(let i=0; i<navItems.length; i++){
         if(navItems[i].hasAttribute('selected')){
             navItems[i].removeAttribute('selected')
+            navItems[i].removeAttribute('aria-current')
         }
     }
     ele.setAttribute('selected', '')
+    ele.setAttribute('aria-current', 'true')
     let prevTab = selectedSettingsTab
     selectedSettingsTab = ele.getAttribute('rSc')
 
     document.getElementById(prevTab).onscroll = null
     document.getElementById(selectedSettingsTab).onscroll = settingsTabScrollListener
 
-    if(fade){
-        $(`#${prevTab}`).fadeOut(250, () => {
-            $(`#${selectedSettingsTab}`).fadeIn({
-                duration: 250,
-                start: () => {
-                    settingsTabScrollListener({
-                        target: document.getElementById(selectedSettingsTab)
-                    })
-                }
-            })
-        })
-    } else {
-        $(`#${prevTab}`).hide(0, () => {
-            $(`#${selectedSettingsTab}`).show({
-                duration: 0,
-                start: () => {
-                    settingsTabScrollListener({
-                        target: document.getElementById(selectedSettingsTab)
-                    })
-                }
-            })
-        })
-    }
+    const duration = fade && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 120 : 0
+    $(`#${prevTab}`).stop(true, true).hide()
+    $(`#${selectedSettingsTab}`).stop(true, true).fadeIn(duration)
 }
 
 const settingsNavDone = document.getElementById('settingsNavDone')
@@ -323,16 +271,20 @@ function settingsSaveDisabled(v){
 
 function fullSettingsSave() {
     saveSettingsValues()
-    saveModConfiguration()
+    if(ConfigManager.getSelectedServer() != null){
+        saveModConfiguration()
+        saveDropinModConfiguration()
+        saveShaderpackSettings()
+    }
     ConfigManager.save()
-    saveDropinModConfiguration()
-    saveShaderpackSettings()
 }
 
 /* Closes the settings view and saves all data. */
 settingsNavDone.onclick = () => {
     fullSettingsSave()
-    switchView(getCurrentView(), VIEWS.landing)
+    switchView(getCurrentView(), VIEWS.landing, 160, 160, undefined, () => {
+        document.getElementById('settingsMediaButton').focus()
+    })
 }
 
 /**
@@ -444,20 +396,13 @@ ipcRenderer.on(MSFT_OPCODE.REPLY_LOGIN, (_, ...arguments_) => {
  */
 function bindAuthAccountSelect(){
     Array.from(document.getElementsByClassName('settingsAuthAccountSelect')).map((val) => {
-        val.onclick = (e) => {
+        val.onclick = () => {
             if(val.hasAttribute('selected')){
                 return
             }
-            const selectBtns = document.getElementsByClassName('settingsAuthAccountSelect')
-            for(let i=0; i<selectBtns.length; i++){
-                if(selectBtns[i].hasAttribute('selected')){
-                    selectBtns[i].removeAttribute('selected')
-                    selectBtns[i].innerHTML = Lang.queryJS('settings.authAccountSelect.selectButton')
-                }
-            }
-            val.setAttribute('selected', '')
-            val.innerHTML = Lang.queryJS('settings.authAccountSelect.selectedButton')
-            setSelectedAccount(val.closest('.settingsAuthAccount').getAttribute('uuid'))
+            const uuid = val.closest('.settingsAuthAccount').getAttribute('uuid')
+            refreshAuthAccountSelected(uuid)
+            setSelectedAccount(uuid)
         }
     })
 }
@@ -578,7 +523,10 @@ ipcRenderer.on(MSFT_OPCODE.REPLY_LOGOUT, (_, ...arguments_) => {
 function refreshAuthAccountSelected(uuid){
     Array.from(document.getElementsByClassName('settingsAuthAccount')).map((val) => {
         const selBtn = val.getElementsByClassName('settingsAuthAccountSelect')[0]
-        if(uuid === val.getAttribute('uuid')){
+        const selected = uuid === val.getAttribute('uuid')
+        val.dataset.selected = String(selected)
+        selBtn.disabled = selected
+        if(selected){
             selBtn.setAttribute('selected', '')
             selBtn.innerHTML = Lang.queryJS('settings.authAccountSelect.selectedButton')
         } else {
@@ -608,9 +556,9 @@ function populateAuthAccounts(){
     authKeys.forEach((val) => {
         const acc = authAccounts[val]
 
-        const accHtml = `<div class="settingsAuthAccount" uuid="${acc.uuid}">
+        const accHtml = `<div class="settingsAuthAccount" uuid="${acc.uuid}" data-selected="${selectedUUID === acc.uuid}">
             <div class="settingsAuthAccountLeft">
-                <img class="settingsAuthAccountImage" alt="${acc.displayName}" src="https://mc-heads.net/body/${acc.uuid}/60">
+                <img class="settingsAuthAccountImage" alt="" data-account-uuid="${acc.uuid}" src="assets/images/icons/profile.svg">
             </div>
             <div class="settingsAuthAccountRight">
                 <div class="settingsAuthAccountDetails">
@@ -618,13 +566,13 @@ function populateAuthAccounts(){
                         <div class="settingsAuthAccountDetailTitle">${Lang.queryJS('settings.authAccountPopulate.username')}</div>
                         <div class="settingsAuthAccountDetailValue">${acc.displayName}</div>
                     </div>
-                    <div class="settingsAuthAccountDetailPane">
-                        <div class="settingsAuthAccountDetailTitle">${Lang.queryJS('settings.authAccountPopulate.uuid')}</div>
+                    <details class="settingsAccountId">
+                        <summary>${Lang.queryJS('settings.authAccountPopulate.uuid')}</summary>
                         <div class="settingsAuthAccountDetailValue">${acc.uuid}</div>
-                    </div>
+                    </details>
                 </div>
                 <div class="settingsAuthAccountActions">
-                    <button class="settingsAuthAccountSelect" ${selectedUUID === acc.uuid ? 'selected>' + Lang.queryJS('settings.authAccountPopulate.selectedAccount') : '>' + Lang.queryJS('settings.authAccountPopulate.selectAccount')}</button>
+                    <button class="settingsAuthAccountSelect" ${selectedUUID === acc.uuid ? 'selected disabled>' + Lang.queryJS('settings.authAccountPopulate.selectedAccount') : '>' + Lang.queryJS('settings.authAccountPopulate.selectAccount')}</button>
                     <div class="settingsAuthAccountWrapper">
                         <button class="settingsAuthAccountLogOut">${Lang.queryJS('settings.authAccountPopulate.logout')}</button>
                     </div>
@@ -637,6 +585,11 @@ function populateAuthAccounts(){
     })
 
     settingsCurrentMicrosoftAccounts.innerHTML = microsoftAuthAccountStr
+    for(const image of settingsCurrentMicrosoftAccounts.querySelectorAll('.settingsAuthAccountImage')){
+        void AccountAvatar.getHeadUrl(image.dataset.accountUuid, 48).then(url => {
+            if(image.isConnected) image.src = url
+        })
+    }
 }
 
 /**
@@ -671,6 +624,7 @@ document.getElementById('settingsGameHeight').addEventListener('keydown', (e) =>
  */
 
 const settingsModsContainer = document.getElementById('settingsModsContainer')
+const settingsShadersSelect = document.getElementById('settingsShadersSelect')
 
 /**
  * Resolve and update the mods on the UI.
@@ -681,101 +635,107 @@ async function resolveModsForUI(){
     const distro = await DistroAPI.getDistribution()
     const servConf = ConfigManager.getModConfiguration(serv)
 
-    const modStr = parseModulesForUI(distro.getServerById(serv).modules, false, servConf.mods)
+    const { requiredMods, optionalMods } = parseModulesForUI(distro.getServerById(serv).modules, servConf.mods)
 
-    document.getElementById('settingsReqModsContent').innerHTML = modStr.reqMods
-    document.getElementById('settingsOptModsContent').innerHTML = modStr.optMods
+    document.getElementById('settingsReqModsContent').replaceChildren(...requiredMods)
+    document.getElementById('settingsOptModsContent').replaceChildren(...optionalMods)
+}
+
+function createModRow({ id, name, enabled, version, required, dropin = false }){
+    const row = document.createElement('div')
+    row.id = id
+    row.className = 'settingsBaseMod'
+    row.toggleAttribute('enabled', enabled)
+    row.innerHTML = '<div class="settingsModContent"><div class="settingsModDetails"></div><div class="settingsModActions"></div></div>'
+
+    const [details, actions] = row.firstElementChild.children
+    const nameLabel = document.createElement('span')
+    nameLabel.className = 'settingsModName'
+    nameLabel.textContent = name
+    details.append(nameLabel)
+
+    if(version != null){
+        const versionLabel = document.createElement('span')
+        versionLabel.className = 'settingsModVersion'
+        versionLabel.textContent = 'v' + version
+        details.append(versionLabel)
+    }
+
+    if(required){
+        const state = document.createElement('span')
+        state.className = 'settingsModRequired'
+        state.textContent = Lang.queryJS('settings.mods.requiredState')
+        actions.append(state)
+    } else {
+        if(dropin){
+            const remove = document.createElement('button')
+            remove.type = 'button'
+            remove.className = 'settingsDropinRemoveButton'
+            remove.textContent = Lang.queryJS('settings.dropinMods.removeButton')
+            remove.setAttribute('remmod', id)
+            remove.setAttribute('aria-label', Lang.queryJS('settings.dropinMods.removeLabel', { name }))
+            actions.append(remove)
+        }
+        const toggle = document.createElement('label')
+        toggle.className = 'toggleSwitch'
+        toggle.innerHTML = '<input type="checkbox" role="switch"><span class="toggleSwitchSlider"></span>'
+        const input = toggle.firstElementChild
+        input.checked = enabled
+        input.setAttribute('aria-label', name)
+        input.setAttribute('formod', id)
+        input.toggleAttribute('dropin', dropin)
+        actions.append(toggle)
+    }
+    return row
 }
 
 /**
- * Recursively build the mod UI elements.
- * 
- * @param {Object[]} mdls An array of modules to parse.
- * @param {boolean} submodules Whether or not we are parsing submodules.
- * @param {Object} servConf The server configuration object for this module level.
+ * Build managed mod rows, keeping submodules attached to their parent.
  */
-function parseModulesForUI(mdls, submodules, servConf){
-
-    let reqMods = ''
-    let optMods = ''
+function parseModulesForUI(mdls, servConf){
+    const requiredMods = []
+    const optionalMods = []
 
     for(const mdl of mdls){
+        const { type, name } = mdl.rawModule
+        if(type !== Type.ForgeMod && type !== Type.LiteMod && type !== Type.LiteLoader && type !== Type.FabricMod){
+            continue
+        }
 
-        if(mdl.rawModule.type === Type.ForgeMod || mdl.rawModule.type === Type.LiteMod || mdl.rawModule.type === Type.LiteLoader || mdl.rawModule.type === Type.FabricMod){
+        const id = mdl.getVersionlessMavenIdentifier()
+        const requirement = mdl.getRequired()
+        const config = servConf?.[id]
+        const enabled = requirement.value || (typeof config === 'boolean' ? config : config?.value ?? requirement.def)
+        const row = createModRow({ id, name, enabled, version: mdl.mavenComponents.version, required: requirement.value })
 
-            if(mdl.getRequired().value){
-
-                reqMods += `<div id="${mdl.getVersionlessMavenIdentifier()}" class="settingsBaseMod settings${submodules ? 'Sub' : ''}Mod" enabled>
-                    <div class="settingsModContent">
-                        <div class="settingsModMainWrapper">
-                            <div class="settingsModStatus"></div>
-                            <div class="settingsModDetails">
-                                <span class="settingsModName">${mdl.rawModule.name}</span>
-                                <span class="settingsModVersion">v${mdl.mavenComponents.version}</span>
-                            </div>
-                        </div>
-                        <label class="toggleSwitch" reqmod>
-                            <input type="checkbox" checked>
-                            <span class="toggleSwitchSlider"></span>
-                        </label>
-                    </div>
-                    ${mdl.subModules.length > 0 ? `<div class="settingsSubModContainer">
-                        ${Object.values(parseModulesForUI(mdl.subModules, true, servConf[mdl.getVersionlessMavenIdentifier()])).join('')}
-                    </div>` : ''}
-                </div>`
-
-            } else {
-
-                const conf = servConf[mdl.getVersionlessMavenIdentifier()]
-                const val = typeof conf === 'object' ? conf.value : conf
-
-                optMods += `<div id="${mdl.getVersionlessMavenIdentifier()}" class="settingsBaseMod settings${submodules ? 'Sub' : ''}Mod" ${val ? 'enabled' : ''}>
-                    <div class="settingsModContent">
-                        <div class="settingsModMainWrapper">
-                            <div class="settingsModStatus"></div>
-                            <div class="settingsModDetails">
-                                <span class="settingsModName">${mdl.rawModule.name}</span>
-                                <span class="settingsModVersion">v${mdl.mavenComponents.version}</span>
-                            </div>
-                        </div>
-                        <label class="toggleSwitch">
-                            <input type="checkbox" formod="${mdl.getVersionlessMavenIdentifier()}" ${val ? 'checked' : ''}>
-                            <span class="toggleSwitchSlider"></span>
-                        </label>
-                    </div>
-                    ${mdl.subModules.length > 0 ? `<div class="settingsSubModContainer">
-                        ${Object.values(parseModulesForUI(mdl.subModules, true, conf.mods)).join('')}
-                    </div>` : ''}
-                </div>`
-
+        if(mdl.subModules.length > 0){
+            const children = parseModulesForUI(mdl.subModules, config?.mods)
+            if(children.requiredMods.length || children.optionalMods.length){
+                const nested = document.createElement('div')
+                nested.className = 'settingsSubModContainer'
+                nested.append(...children.requiredMods, ...children.optionalMods)
+                row.append(nested)
             }
+        }
+
+        if(requirement.value){
+            requiredMods.push(row)
+        } else {
+            optionalMods.push(row)
         }
     }
 
-    return {
-        reqMods,
-        optMods
-    }
-
+    return { requiredMods, optionalMods }
 }
 
 /**
- * Bind functionality to mod config toggle switches. Switching the value
- * will also switch the status color on the left of the mod UI.
+ * Mirror switch state on the row for nested mods and drop-in mod saves.
  */
 function bindModsToggleSwitch(){
-    const sEls = settingsModsContainer.querySelectorAll('[formod]')
-    Array.from(sEls).map((v, index, arr) => {
-        v.onchange = () => {
-            if(v.checked) {
-                document.getElementById(v.getAttribute('formod')).setAttribute('enabled', '')
-            } else {
-                document.getElementById(v.getAttribute('formod')).removeAttribute('enabled')
-            }
-        }
-    })
+    for(const input of settingsModsContainer.querySelectorAll('[formod]')){
+        input.onchange = () => input.closest('.settingsBaseMod').toggleAttribute('enabled', input.checked)
+    }
 }
-
 
 /**
  * Save the mod configuration based on the UI values.
@@ -793,19 +753,16 @@ function saveModConfiguration(){
  * @param {Object} modConf Mod config object to save.
  */
 function _saveModConfiguration(modConf){
-    for(let m of Object.entries(modConf)){
-        const tSwitch = settingsModsContainer.querySelectorAll(`[formod='${m[0]}']`)
-        if(!tSwitch[0].hasAttribute('dropin')){
-            if(typeof m[1] === 'boolean'){
-                modConf[m[0]] = tSwitch[0].checked
-            } else {
-                if(m[1] != null){
-                    if(tSwitch.length > 0){
-                        modConf[m[0]].value = tSwitch[0].checked
-                    }
-                    modConf[m[0]].mods = _saveModConfiguration(modConf[m[0]].mods)
-                }
+    for(const [id, value] of Object.entries(modConf)){
+        const row = document.getElementById(id)
+        const input = row?.querySelector(':scope > .settingsModContent [formod]:not([dropin])')
+        if(input && typeof value === 'boolean'){
+            modConf[id] = input.checked
+        } else if(value?.mods != null){
+            if(input){
+                value.value = input.checked
             }
+            _saveModConfiguration(value.mods)
         }
     }
     return modConf
@@ -825,29 +782,13 @@ async function resolveDropinModsForUI(){
     CACHE_SETTINGS_MODS_DIR = path.join(ConfigManager.getInstanceDirectory(), serv.rawServer.id, 'mods')
     CACHE_DROPIN_MODS = DropinModUtil.scanForDropinMods(CACHE_SETTINGS_MODS_DIR, serv.rawServer.minecraftVersion)
 
-    let dropinMods = ''
-
-    for(dropin of CACHE_DROPIN_MODS){
-        dropinMods += `<div id="${dropin.fullName}" class="settingsBaseMod settingsDropinMod" ${!dropin.disabled ? 'enabled' : ''}>
-                    <div class="settingsModContent">
-                        <div class="settingsModMainWrapper">
-                            <div class="settingsModStatus"></div>
-                            <div class="settingsModDetails">
-                                <span class="settingsModName">${dropin.name}</span>
-                                <div class="settingsDropinRemoveWrapper">
-                                    <button class="settingsDropinRemoveButton" remmod="${dropin.fullName}">${Lang.queryJS('settings.dropinMods.removeButton')}</button>
-                                </div>
-                            </div>
-                        </div>
-                        <label class="toggleSwitch">
-                            <input type="checkbox" formod="${dropin.fullName}" dropin ${!dropin.disabled ? 'checked' : ''}>
-                            <span class="toggleSwitchSlider"></span>
-                        </label>
-                    </div>
-                </div>`
-    }
-
-    document.getElementById('settingsDropinModsContent').innerHTML = dropinMods
+    const rows = CACHE_DROPIN_MODS.map(({ fullName, name, disabled }) => createModRow({
+        id: fullName,
+        name,
+        enabled: !disabled,
+        dropin: true
+    }))
+    document.getElementById('settingsDropinModsContent').replaceChildren(...rows)
 }
 
 /**
@@ -910,7 +851,7 @@ function bindDropinModFileSystemButton(){
  * of adding/removing the .disabled extension.
  */
 function saveDropinModConfiguration(){
-    for(dropin of CACHE_DROPIN_MODS){
+    for(const dropin of CACHE_DROPIN_MODS){
         const dropinUI = document.getElementById(dropin.fullName)
         if(dropinUI != null){
             const dropinUIEnabled = dropinUI.hasAttribute('enabled')
@@ -934,7 +875,7 @@ function saveDropinModConfiguration(){
 // Refresh the drop-in mods when F5 is pressed.
 // Only active on the mods tab.
 document.addEventListener('keydown', async (e) => {
-    if(getCurrentView() === VIEWS.settings && selectedSettingsTab === 'settingsTabMods'){
+    if(getCurrentView() === VIEWS.settings && selectedSettingsTab === 'settingsTabMods' && ConfigManager.getSelectedServer() != null && !isOverlayVisible()){
         if(e.key === 'F5'){
             await reloadDropinMods()
             saveShaderpackSettings()
@@ -953,8 +894,6 @@ async function reloadDropinMods(){
 // Shaderpack
 
 let CACHE_SETTINGS_INSTANCE_DIR
-let CACHE_SHADERPACKS
-let CACHE_SELECTED_SHADERPACK
 
 /**
  * Load shaderpack information.
@@ -962,43 +901,21 @@ let CACHE_SELECTED_SHADERPACK
 async function resolveShaderpacksForUI(){
     const serv = (await DistroAPI.getDistribution()).getServerById(ConfigManager.getSelectedServer())
     CACHE_SETTINGS_INSTANCE_DIR = path.join(ConfigManager.getInstanceDirectory(), serv.rawServer.id)
-    CACHE_SHADERPACKS = DropinModUtil.scanForShaderpacks(CACHE_SETTINGS_INSTANCE_DIR)
-    CACHE_SELECTED_SHADERPACK = DropinModUtil.getEnabledShaderpack(CACHE_SETTINGS_INSTANCE_DIR)
-
-    setShadersOptions(CACHE_SHADERPACKS, CACHE_SELECTED_SHADERPACK)
-}
-
-function setShadersOptions(arr, selected){
-    const cont = document.getElementById('settingsShadersOptions')
-    cont.innerHTML = ''
-    for(let opt of arr) {
-        const d = document.createElement('DIV')
-        d.innerHTML = opt.name
-        d.setAttribute('value', opt.fullName)
-        if(opt.fullName === selected) {
-            d.setAttribute('selected', '')
-            document.getElementById('settingsShadersSelected').innerHTML = opt.name
-        }
-        d.addEventListener('click', function(e) {
-            this.parentNode.previousElementSibling.innerHTML = this.innerHTML
-            for(let sib of this.parentNode.children){
-                sib.removeAttribute('selected')
-            }
-            this.setAttribute('selected', '')
-            closeSettingsSelect()
-        })
-        cont.appendChild(d)
+    const packs = DropinModUtil.scanForShaderpacks(CACHE_SETTINGS_INSTANCE_DIR)
+    const selected = DropinModUtil.getEnabledShaderpack(CACHE_SETTINGS_INSTANCE_DIR)
+    const options = packs.map(({ fullName, name }) => {
+        const label = fullName === 'OFF' ? Lang.queryJS('settings.mods.shaderpackOff') : name
+        return new Option(label, fullName)
+    })
+    settingsShadersSelect.replaceChildren(...options)
+    settingsShadersSelect.value = selected
+    if(settingsShadersSelect.selectedIndex === -1){
+        settingsShadersSelect.value = 'OFF'
     }
 }
 
 function saveShaderpackSettings(){
-    let sel = 'OFF'
-    for(let opt of document.getElementById('settingsShadersOptions').childNodes){
-        if(opt.hasAttribute('selected')){
-            sel = opt.getAttribute('value')
-        }
-    }
-    DropinModUtil.setEnabledShaderpack(CACHE_SETTINGS_INSTANCE_DIR, sel)
+    DropinModUtil.setEnabledShaderpack(CACHE_SETTINGS_INSTANCE_DIR, settingsShadersSelect.value || 'OFF')
 }
 
 function bindShaderpackButton() {
@@ -1065,10 +982,7 @@ async function loadSelectedServerOnModsTab(){
 
 // Bind functionality to the server switch button.
 Array.from(document.getElementsByClassName('settingsSwitchServerButton')).forEach(el => {
-    el.addEventListener('click', async e => {
-        e.target.blur()
-        await toggleServerSelection(true)
-    })
+    el.addEventListener('click', () => toggleServerSelection(true))
 })
 
 /**
@@ -1084,11 +998,17 @@ function saveAllModConfigurations(){
  * Function to refresh the current tab whenever the selected
  * server is changed.
  */
-function animateSettingsTabRefresh(){
-    $(`#${selectedSettingsTab}`).fadeOut(500, async () => {
+async function animateSettingsTabRefresh(){
+    const content = document.getElementById('settingsContainerRight')
+    const wasDisabled = settingsNavDone.disabled
+    content.inert = true
+    settingsNavDone.disabled = true
+    try {
         await prepareSettings()
-        $(`#${selectedSettingsTab}`).fadeIn(500)
-    })
+    } finally {
+        content.inert = false
+        settingsNavDone.disabled = wasDisabled
+    }
 }
 
 /**
@@ -1207,44 +1127,45 @@ function calculateRangeSliderMeta(v){
 function bindRangeSlider(){
     Array.from(document.getElementsByClassName('rangeSlider')).map((v) => {
 
-        // Reference the track (thumb).
-        const track = v.getElementsByClassName('rangeSliderTrack')[0]
-
         // Set the initial slider value.
         const value = v.getAttribute('value')
         const sliderMeta = calculateRangeSliderMeta(v)
 
         updateRangedSlider(v, value, ((value-sliderMeta.min)/sliderMeta.step)*sliderMeta.inc)
+        v.setAttribute('aria-valuemin', sliderMeta.min)
+        v.setAttribute('aria-valuemax', sliderMeta.max)
+        v.onkeydown = event => {
+            const current = Number(v.getAttribute('value'))
+            const offsets = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }
+            let next
+            if(event.key === 'Home') next = sliderMeta.min
+            else if(event.key === 'End') next = sliderMeta.max
+            else if(Object.hasOwn(offsets, event.key)) next = current + offsets[event.key] * sliderMeta.step
+            else return
+            event.preventDefault()
+            next = Math.max(sliderMeta.min, Math.min(sliderMeta.max, next))
+            updateRangedSlider(v, next, ((next-sliderMeta.min)/sliderMeta.step)*sliderMeta.inc)
+        }
 
-        // The magic happens when we click on the track.
-        track.onmousedown = (e) => {
-
-            // Stop moving the track on mouse up.
-            document.onmouseup = (e) => {
-                document.onmousemove = null
-                document.onmouseup = null
-            }
-
-            // Move slider according to the mouse position.
-            document.onmousemove = (e) => {
-
-                // Distance from the beginning of the bar in pixels.
-                const diff = e.pageX - v.offsetLeft - track.offsetWidth/2
-                
-                // Don't move the track off the bar.
-                if(diff >= 0 && diff <= v.offsetWidth-track.offsetWidth/2){
-
-                    // Convert the difference to a percentage.
-                    const perc = (diff/v.offsetWidth)*100
-                    // Calculate the percentage of the closest notch.
-                    const notch = Number(perc/sliderMeta.inc).toFixed(0)*sliderMeta.inc
-
-                    // If we're close to that notch, stick to it.
-                    if(Math.abs(perc-notch) < sliderMeta.inc/2){
-                        updateRangedSlider(v, sliderMeta.min+(sliderMeta.step*(notch/sliderMeta.inc)), notch)
-                    }
-                }
-            }
+        const updateFromPointer = event => {
+            const bounds = v.getBoundingClientRect()
+            const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
+            const tick = Math.round(ratio * sliderMeta.ticks)
+            updateRangedSlider(v, sliderMeta.min + tick * sliderMeta.step, tick * sliderMeta.inc)
+        }
+        // Pointer capture keeps dragging reliable outside the thin visible track.
+        v.onpointerdown = event => {
+            if(event.button !== 0) return
+            event.preventDefault()
+            v.focus()
+            v.setPointerCapture(event.pointerId)
+            updateFromPointer(event)
+        }
+        v.onpointermove = event => {
+            if(v.hasPointerCapture(event.pointerId)) updateFromPointer(event)
+        }
+        v.onpointerup = event => {
+            if(v.hasPointerCapture(event.pointerId)) v.releasePointerCapture(event.pointerId)
         }
     }) 
 }
@@ -1279,6 +1200,8 @@ function updateRangedSlider(element, value, notch){
     let cancelled = !element.dispatchEvent(event)
 
     if(!cancelled){
+        element.setAttribute('aria-valuenow', value)
+        element.setAttribute('aria-valuetext', Number(value).toFixed(1) + ' GB')
         track.style.left = notch + '%'
         bar.style.width = notch + '%'
     } else {
@@ -1409,15 +1332,10 @@ function isPrerelease(version){
  */
 function populateVersionInformation(version, valueElement, titleElement, checkElement){
     valueElement.innerHTML = version
-    if(isPrerelease(version)){
-        titleElement.innerHTML = Lang.queryJS('settings.about.preReleaseTitle')
-        titleElement.style.color = '#ff886d'
-        checkElement.style.background = '#ff886d'
-    } else {
-        titleElement.innerHTML = Lang.queryJS('settings.about.stableReleaseTitle')
-        titleElement.style.color = null
-        checkElement.style.background = null
-    }
+    const prerelease = isPrerelease(version)
+    titleElement.textContent = Lang.queryJS(prerelease ? 'settings.about.preReleaseTitle' : 'settings.about.stableReleaseTitle')
+    titleElement.toggleAttribute('data-prerelease', prerelease)
+    checkElement.toggleAttribute('data-prerelease', prerelease)
 }
 
 /**
@@ -1546,16 +1464,22 @@ function prepareUpdateTab(data = null){
   * @param {boolean} first Whether or not it is the first load.
   */
 async function prepareSettings(first = false) {
+    const hasServer = ConfigManager.getSelectedServer() != null
+    for(const id of ['settingsTabMods', 'settingsTabJava']){
+        const tab = document.getElementById(id)
+        tab.toggleAttribute('data-no-server', !hasServer)
+        tab.querySelector('.settings-empty-server').hidden = hasServer
+    }
     if(first){
         setupSettingsTabs()
         initSettingsValidators()
         prepareUpdateTab()
-    } else {
+    } else if(hasServer){
         await prepareModsTab()
     }
     await initSettingsValues()
     prepareAccountsTab()
-    await prepareJavaTab()
+    if(hasServer) await prepareJavaTab()
     prepareAboutTab()
 }
 

@@ -32,7 +32,8 @@ LangLoader.setupLanguage()
  */
 function onDistroLoad(data){
     if(data != null){
-        if(data.getMainServer().rawServer.id === 'AliceDiamond-26.2'
+        const mainId = data.getMainServer()?.rawServer.id ?? null
+        if(mainId === 'AliceDiamond-26.2'
             && ConfigManager.selectDiamondDefaultOnce()){
             ConfigManager.save()
         }
@@ -40,7 +41,7 @@ function onDistroLoad(data){
         // Resolve the selected server if its value has yet to be set.
         if(ConfigManager.getSelectedServer() == null || data.getServerById(ConfigManager.getSelectedServer()) == null){
             logger.info('Determining default selected server..')
-            ConfigManager.setSelectedServer(data.getMainServer().rawServer.id)
+            ConfigManager.setSelectedServer(mainId)
             ConfigManager.save()
         }
     }

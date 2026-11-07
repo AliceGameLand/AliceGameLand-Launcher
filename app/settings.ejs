@@ -5,27 +5,48 @@
                 <span id="settingsNavHeaderText"><%- lang('settings.navHeaderText') %></span>
             </div>
             <div id="settingsNavItemsContainer">
-                <div id="settingsNavItemsContent">
-                    <button class="settingsNavItem" rSc="settingsTabAccount" id="settingsNavAccount" selected><%- lang('settings.navAccount') %></button>
-                    <button class="settingsNavItem" rSc="settingsTabMinecraft"><%- lang('settings.navMinecraft') %></button>
-                    <button class="settingsNavItem" rSc="settingsTabMods"><%- lang('settings.navMods') %></button>
-                    <button class="settingsNavItem" rSc="settingsTabJava"><%- lang('settings.navJava') %></button>
-                    <button class="settingsNavItem" rSc="settingsTabLauncher"><%- lang('settings.navLauncher') %></button>
+                <nav id="settingsNavItemsContent" aria-label="<%= lang('settings.navHeaderText') %>">
+                    <button class="settingsNavItem" type="button" rSc="settingsTabAccount" id="settingsNavAccount" aria-current="true" selected>
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6" r="3"/><path d="M4 17v-1a6 6 0 0 1 12 0v1"/></svg>
+                        <span><%- lang('settings.navAccount') %></span>
+                    </button>
+                    <button class="settingsNavItem" type="button" rSc="settingsTabMinecraft">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="11" rx="1.5"/><path d="M10 14.5v3m-4 0h8"/></svg>
+                        <span><%- lang('settings.navMinecraft') %></span>
+                    </button>
+                    <button class="settingsNavItem" type="button" rSc="settingsTabMods">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2.5 7 4v7l-7 4-7-4v-7Zm-7 4 7 4 7-4m-7 4v7"/></svg>
+                        <span><%- lang('settings.navMods') %></span>
+                    </button>
+                    <button class="settingsNavItem" type="button" rSc="settingsTabJava">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3.5 8h10v4a5 5 0 0 1-10 0Zm10 0H15a2.5 2.5 0 0 1 0 5h-1.5M3 17.5h12M7 5V2.5M10.5 5V2.5"/></svg>
+                        <span><%- lang('settings.navJava') %></span>
+                    </button>
+                    <button class="settingsNavItem" type="button" rSc="settingsTabLauncher">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 5h3m4 0h8m-15 5h8m4 0h3m-15 5h3m4 0h8"/><circle cx="7.5" cy="5" r="2"/><circle cx="12.5" cy="10" r="2"/><circle cx="7.5" cy="15" r="2"/></svg>
+                        <span><%- lang('settings.navLauncher') %></span>
+                    </button>
                     <div class="settingsNavSpacer"></div>
-                    <button class="settingsNavItem" rSc="settingsTabAbout"><%- lang('settings.navAbout') %></button>
-                    <button class="settingsNavItem" rSc="settingsTabUpdate" id="settingsNavUpdate"><%- lang('settings.navUpdates') %></button>
+                    <button class="settingsNavItem" type="button" rSc="settingsTabAbout">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5m0-8v.1"/></svg>
+                        <span><%- lang('settings.navAbout') %></span>
+                    </button>
+                    <button class="settingsNavItem" type="button" rSc="settingsTabUpdate" id="settingsNavUpdate">
+                        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 7a7 7 0 0 0-12-2m-1 8a7 7 0 0 0 12 2M16.5 3.5V7H13M3.5 16.5V13H7"/></svg>
+                        <span><%- lang('settings.navUpdates') %></span>
+                    </button>
                     <div id="settingsNavContentBottom">
                         <div class="settingsNavDivider"></div>
-                        <button id="settingsNavDone"><%- lang('settings.navDone') %></button>
+                        <button id="settingsNavDone" class="primary-button"><%- lang('settings.navDone') %></button>
                     </div>
-                </div>
+                </nav>
             </div>
         </div>
     </div>
     <div id="settingsContainerRight">
         <div id="settingsTabAccount" class="settingsTab">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.tabAccountHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.tabAccountHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.tabAccountHeaderDesc') %></span>
             </div>
             <div class="settingsAuthAccountTypeContainer">
@@ -52,24 +73,25 @@
         </div>
         <div id="settingsTabMinecraft" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.minecraftTabHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.minecraftTabHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.minecraftTabHeaderDesc') %></span>
             </div>
             <div id="settingsGameResolutionContainer">
                 <span class="settingsFieldTitle"><%- lang('settings.gameResolutionTitle') %></span>
                 <div id="settingsGameResolutionContent">
-                    <input type="number" id="settingsGameWidth" min="0" cValue="GameWidth">
-                    <div id="settingsGameResolutionCross">&#10006;</div>
-                    <input type="number" id="settingsGameHeight" min="0" cValue="GameHeight">
+                    <input type="number" id="settingsGameWidth" aria-label="<%= lang('settings.gameWidthLabel') %>" aria-describedby="settingsResolutionError" min="0" cValue="GameWidth">
+                    <div id="settingsGameResolutionCross" aria-hidden="true">&times;</div>
+                    <input type="number" id="settingsGameHeight" aria-label="<%= lang('settings.gameHeightLabel') %>" aria-describedby="settingsResolutionError" min="0" cValue="GameHeight">
                 </div>
             </div>
+            <p id="settingsResolutionError" class="settingsFieldError" role="status" hidden><%= lang('settings.resolutionError') %></p>
             <div class="settingsFieldContainer">
                 <div class="settingsFieldLeft">
                     <span class="settingsFieldTitle"><%- lang('settings.launchFullscreenTitle') %></span>
                 </div>
                 <div class="settingsFieldRight">
                     <label class="toggleSwitch">
-                        <input type="checkbox" cValue="Fullscreen">
+                        <input type="checkbox" cValue="Fullscreen" aria-label="<%= lang('settings.launchFullscreenTitle') %>">
                         <span class="toggleSwitchSlider"></span>
                     </label>
                 </div>
@@ -80,7 +102,7 @@
                 </div>
                 <div class="settingsFieldRight">
                     <label class="toggleSwitch">
-                        <input type="checkbox" cValue="AutoConnect">
+                        <input type="checkbox" cValue="AutoConnect" aria-label="<%= lang('settings.autoConnectTitle') %>">
                         <span class="toggleSwitchSlider"></span>
                     </label>
                 </div>
@@ -92,7 +114,7 @@
                 </div>
                 <div class="settingsFieldRight">
                     <label class="toggleSwitch">
-                        <input type="checkbox" cValue="LaunchDetached">
+                        <input type="checkbox" cValue="LaunchDetached" aria-label="<%= lang('settings.launchDetachedTitle') %>">
                         <span class="toggleSwitchSlider"></span>
                     </label>
                 </div>
@@ -100,60 +122,51 @@
         </div>
         <div id="settingsTabMods" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.tabModsHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.tabModsHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.tabModsHeaderDesc') %></span>
             </div>
-            <div class="settingsSelServContainer">
-                <div class="settingsSelServContent">
-
-                </div>
-                <div class="settingsSwitchServerContainer">
-                    <div class="settingsSwitchServerContent">
-                        <button class="settingsSwitchServerButton"><%- lang('settings.switchServerButton') %></button>
-                    </div>
-                </div>
+            <p class="settings-empty-server" hidden><%= lang('settings.noServers') %></p>
+            <div class="settingsModsServer settings-server-context">
+                <div class="settingsSelServContent"></div>
+                <button type="button" class="settingsSwitchServerButton"><%= lang('settings.modsSwitchServer') %></button>
             </div>
             <div id="settingsModsContainer">
-                <div id="settingsReqModsContainer">
-                    <div class="settingsModsHeader"><%- lang('settings.requiredMods') %></div>
-                    <div id="settingsReqModsContent">
-
+                <section class="settingsModsSection settingsModsManagedSection" aria-labelledby="settingsReqModsHeading">
+                    <h2 id="settingsReqModsHeading" class="settingsModsHeader"><%= lang('settings.requiredMods') %></h2>
+                    <div id="settingsReqModsContent" class="settingsModList"></div>
+                    <p class="settingsModsNote settingsModsEmpty"><%= lang('settings.requiredModsNote') %></p>
+                </section>
+                <section class="settingsModsSection settingsModsManagedSection" aria-labelledby="settingsOptModsHeading">
+                    <h2 id="settingsOptModsHeading" class="settingsModsHeader"><%= lang('settings.optionalMods') %></h2>
+                    <div id="settingsOptModsContent" class="settingsModList"></div>
+                    <p class="settingsModsNote settingsModsEmpty"><%= lang('settings.noOptionalMods') %></p>
+                </section>
+                <section class="settingsModsSection" aria-labelledby="settingsDropinModsHeading">
+                    <div class="settingsModsSectionHeading">
+                        <h2 id="settingsDropinModsHeading" class="settingsModsHeader"><%= lang('settings.dropinMods') %></h2>
+                        <button id="settingsDropinFileSystemButton" type="button" class="settingsModsFolderButton" aria-describedby="settingsDropinRefreshNote"><%= lang('settings.addMods') %></button>
                     </div>
-                </div>
-                <div id="settingsOptModsContainer">
-                    <div class="settingsModsHeader"><%- lang('settings.optionalMods') %></div>
-                    <div id="settingsOptModsContent">
-                        
+                    <p id="settingsDropinRefreshNote" class="settingsModsNote"><%= lang('settings.dropinRefreshNote') %></p>
+                    <div id="settingsDropinModsContent" class="settingsModList"></div>
+                    <p class="settingsModsNote settingsModsEmpty"><%= lang('settings.noLocalMods') %></p>
+                </section>
+                <section class="settingsModsSection" aria-labelledby="settingsShadersHeading">
+                    <div class="settingsModsSectionHeading">
+                        <h2 id="settingsShadersHeading" class="settingsModsHeader"><%= lang('settings.shaderpacks') %></h2>
+                        <button id="settingsShaderpackButton" type="button" class="settingsModsFolderButton"><%= lang('settings.openShaderpackFolder') %></button>
                     </div>
-                </div>
-                <div id="settingsDropinModsContainer">
-                    <div class="settingsModsHeader"><%- lang('settings.dropinMods') %></div>
-                    <button id="settingsDropinFileSystemButton"><%- lang('settings.addMods') %> <span id="settingsDropinRefreshNote"><%- lang('settings.dropinRefreshNote') %></span></button>
-                    <div id="settingsDropinModsContent">
-                        
-                    </div>
-                </div>
-                <div id="settingsShadersContainer">
-                    <div class="settingsModsHeader"><%- lang('settings.shaderpacks') %></div>
-                    <div id="settingsShaderpackDesc"><%- lang('settings.shaderpackDesc') %></div>
-                    <div id="settingsShaderpackWrapper">
-                        <button id="settingsShaderpackButton"> + </button>
-                        <div class="settingsSelectContainer">
-                            <div class="settingsSelectSelected" id="settingsShadersSelected"><%- lang('settings.selectShaderpack') %></div>
-                            <div class="settingsSelectOptions" id="settingsShadersOptions" hidden>
-
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    <p id="settingsShaderpackDesc" class="settingsModsNote"><%= lang('settings.shaderpackDesc') %></p>
+                    <select id="settingsShadersSelect" aria-label="<%= lang('settings.selectShaderpack') %>" aria-describedby="settingsShaderpackDesc"></select>
+                </section>
             </div>
         </div>
         <div id="settingsTabJava" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.tabJavaHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.tabJavaHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.tabJavaHeaderDesc') %></span>
             </div>
-            <div class="settingsSelServContainer">
+            <p class="settings-empty-server" hidden><%= lang('settings.noServers') %></p>
+            <div class="settingsSelServContainer settings-server-context">
                 <div class="settingsSelServContent">
 
                 </div>
@@ -164,13 +177,13 @@
                 </div>
             </div>
             <div id="settingsMemoryContainer">
-                <div id="settingsMemoryTitle"><%- lang('settings.memoryTitle') %></div>
+                <h2 id="settingsMemoryTitle"><%- lang('settings.memoryTitle') %></h2>
                 <div id="settingsMemoryContent">
                     <div id="settingsMemoryContentLeft">
                         <div class="settingsMemoryContentItem">
                             <span class="settingsMemoryHeader"><%- lang('settings.maxRAM') %></span>
                             <div class="settingsMemoryActionContainer">
-                                <div id="settingsMaxRAMRange" class="rangeSlider" cValue="MaxRAM" serverDependent min="3" max="8" value="3" step="0.5">
+                                <div id="settingsMaxRAMRange" role="slider" tabindex="0" aria-label="<%= lang('settings.maxRAM') %>" class="rangeSlider" cValue="MaxRAM" serverDependent min="3" max="8" value="3" step="0.5">
                                     <div class="rangeSliderBar"></div>
                                     <div class="rangeSliderTrack"></div>
                                 </div>
@@ -180,14 +193,13 @@
                         <div class="settingsMemoryContentItem">
                             <span class="settingsMemoryHeader"><%- lang('settings.minRAM') %></span>
                             <div class="settingsMemoryActionContainer">
-                                <div id="settingsMinRAMRange" class="rangeSlider" cValue="MinRAM" serverDependent min="3" max="8" value="3" step="0.5">
+                                <div id="settingsMinRAMRange" role="slider" tabindex="0" aria-label="<%= lang('settings.minRAM') %>" class="rangeSlider" cValue="MinRAM" serverDependent min="3" max="8" value="3" step="0.5">
                                     <div class="rangeSliderBar"></div>
                                     <div class="rangeSliderTrack"></div>
                                 </div>
                                 <span id="settingsMinRAMLabel" class="settingsMemoryLabel">3G</span>
                             </div>
                         </div>
-                        <div id="settingsMemoryDesc"><%- lang('settings.memoryDesc') %></div>
                     </div>
                     <div id="settingsMemoryContentRight">
                         <div id="settingsMemoryStatus">
@@ -202,9 +214,10 @@
                         </div>
                     </div>
                 </div>
+                <div id="settingsMemoryDesc"><%- lang('settings.memoryDesc') %></div>
             </div>
             <div class="settingsFileSelContainer">
-                <div class="settingsFileSelTitle"><%- lang('settings.javaExecutableTitle') %></div>
+                <label class="settingsFileSelTitle" for="settingsJavaExecVal"><%- lang('settings.javaExecutableTitle') %></label>
                 <div class="settingsFileSelContent">
                     <div id="settingsJavaExecDetails"><!-- Invalid Selection --></div>
                     <div class="settingsFileSelActions">
@@ -222,14 +235,14 @@
                                 </g>
                             </svg>
                         </div>
-                        <input class="settingsFileSelVal" id="settingsJavaExecVal" type="text" value="null" cValue="JavaExecutable" serverDependent disabled>
+                        <input class="settingsFileSelVal" id="settingsJavaExecVal" type="text" value="null" cValue="JavaExecutable" serverDependent readonly>
                         <button class="settingsFileSelButton" id="settingsJavaExecSel" dialogTitle="<%- lang('settings.javaExecSelDialogTitle') %>" dialogDirectory="false"><%- lang('settings.javaExecSelButtonText') %></button>
                     </div>
                 </div>
                 <div class="settingsFileSelDesc"><%- lang('settings.javaExecDesc') %> <strong id="settingsJavaReqDesc"><!-- Requires Java 8 x64. --></strong><br><%- lang('settings.javaPathDesc', {'pathSuffix': `bin${process.platform === 'win32' ? '\\javaw.exe' : '/java'}`}) %></div>
             </div>
             <div id="settingsJVMOptsContainer">
-                <div id="settingsJVMOptsTitle"><%- lang('settings.jvmOptsTitle') %></div>
+                <label id="settingsJVMOptsTitle" for="settingsJVMOptsVal"><%- lang('settings.jvmOptsTitle') %></label>
                 <div id="settingsJVMOptsContent">
                     <div class="settingsFileSelIcon">
                         <svg class="settingsFileSelSVG" x="0px" y="0px" viewBox="0 0 305.001 305.001">
@@ -252,7 +265,7 @@
         </div>
         <div id="settingsTabLauncher" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.launcherTabHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.launcherTabHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.launcherTabHeaderDesc') %></span>
             </div>
             <div class="settingsFieldContainer">
@@ -262,7 +275,7 @@
                 </div>
                 <div class="settingsFieldRight">
                     <label class="toggleSwitch">
-                        <input type="checkbox" cValue="AllowPrerelease">
+                        <input type="checkbox" cValue="AllowPrerelease" aria-label="<%= lang('settings.allowPrereleaseTitle') %>">
                         <span class="toggleSwitchSlider"></span>
                     </label>
                 </div>
@@ -272,15 +285,11 @@
                     <div class="settingsFieldTitle" id="settingsDataDirTitle"><%- lang('settings.dataDirectoryTitle') %></div>
                     <div class="settingsFileSelActions">
                         <div class="settingsFileSelIcon">
-                            <svg class="settingsFileSelSVG">
-                                <g>
-                                    <path fill="gray" d="m10.044745,5c0,0.917174 -0.746246,1.667588 -1.667588,1.667588l-4.168971,0l-2.501382,0c-0.921009,0 -1.667588,0.750415 -1.667588,1.667588l0,6.670353l0,2.501382c0,0.917174 0.746604,1.667588 1.667588,1.667588l16.675882,0c0.921342,0 1.667588,-0.750415 1.667588,-1.667588l0,-2.501382l0,-8.337941c0,-0.917174 -0.746246,-1.667588 -1.667588,-1.667588l-8.337941,0z"/>
-                                    <path fill="gray" d="m1.627815,1.6c-0.921009,0 -1.667588,0.746579 -1.667588,1.667588l0,4.168971l8.337941,0l0,0.833794l11.673118,0l0,-4.168971c0,-0.921009 -0.746246,-1.667588 -1.667588,-1.667588l-8.572237,0c-0.288493,-0.497692 -0.816284,-0.833794 -1.433292,-0.833794l-6.670353,0z"/>
-                                    <path fill="lightgray" d="m10.025276,4c0,0.918984 -0.747719,1.670879 -1.670879,1.670879l-4.177198,0l-2.506319,0c-0.922827,0 -1.670879,0.751896 -1.670879,1.670879l0,6.683517l0,2.506319c0,0.918984 0.748078,1.670879 1.670879,1.670879l16.708794,0c0.923161,0 1.670879,-0.751896 1.670879,-1.670879l0,-2.506319l0,-8.354397c0,-0.918984 -0.747719,-1.670879 -1.670879,-1.670879l-8.354397,0z"/>
-                                </g>
+                            <svg class="settingsFileSelSVG" viewBox="0 0 20 20" aria-hidden="true">
+                                <path d="M2.5 6V4h5l2 2h8v10h-15Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
                             </svg>
                         </div>
-                        <input class="settingsFileSelVal" type="text" value="null" cValue="DataDirectory" disabled>
+                        <input class="settingsFileSelVal" type="text" value="null" cValue="DataDirectory" aria-labelledby="settingsDataDirTitle" readonly>
                         <button class="settingsFileSelButton" dialogTitle="<%- lang('settings.selectDataDirectory') %>" dialogDirectory="true"><%- lang('settings.chooseFolder') %></button>
                     </div>
                 </div>
@@ -289,13 +298,13 @@
         </div>
         <div id="settingsTabAbout" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.aboutTabHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.aboutTabHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.aboutTabHeaderDesc') %></span>
             </div>
             <div id="settingsAboutCurrentContainer">
                 <div id="settingsAboutCurrentContent">
                     <div id="settingsAboutCurrentHeadline">
-                        <img id="settingsAboutLogo" src="./assets/images/SealCircle.png">
+                        <img id="settingsAboutLogo" src="./assets/images/SealCircle.png" alt="">
                         <span id="settingsAboutTitle"><%- lang('settings.aboutTitle', { appName: lang('app.title') }) %></span>
                     </div>
                     <div id="settingsAboutCurrentVersion">
@@ -317,11 +326,16 @@
                     <a href="#" id="settingsAboutDevToolsButton" class="settingsAboutButton"><%- lang('settings.devToolsConsole') %></a>
                 </div>
             </div>
+            <details class="settings-service-status">
+                <summary><%= lang('settings.serviceStatus') %></summary>
+                <p id="mojang_status_text" aria-live="polite"></p>
+                <ul id="mojangServiceList"></ul>
+            </details>
+
             <div class="settingsChangelogContainer">
                 <div class="settingsChangelogContent">
                     <div class="settingsChangelogHeadline">
-                        <div class="settingsChangelogLabel"><%- lang('settings.releaseNotes') %></div>
-                        <div class="settingsChangelogTitle"><%- lang('settings.changelog') %></div>
+                        <h2 class="settingsChangelogTitle"><%- lang('settings.changelog') %></h2>
                     </div>
                     <div class="settingsChangelogText">
                         <%- lang('settings.noReleaseNotes') %>
@@ -334,7 +348,7 @@
         </div>
         <div id="settingsTabUpdate" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
-                <span class="settingsTabHeaderText"><%- lang('settings.launcherUpdatesHeaderText') %></span>
+                <h1 class="settingsTabHeaderText"><%- lang('settings.launcherUpdatesHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.launcherUpdatesHeaderDesc') %></span>
             </div>
             <div id="settingsUpdateStatusContainer">
@@ -352,16 +366,15 @@
                             </div>
                         </div>
                     </div>
-                    <div id="settingsUpdateActionContainer">
-                        <button id="settingsUpdateActionButton"><%- lang('settings.checkForUpdates') %></button>
-                    </div>
+                </div>
+                <div id="settingsUpdateActionContainer">
+                    <button id="settingsUpdateActionButton"><%- lang('settings.checkForUpdates') %></button>
                 </div>
             </div>
             <div class="settingsChangelogContainer">
                 <div class="settingsChangelogContent">
                     <div class="settingsChangelogHeadline">
-                        <div class="settingsChangelogLabel"><%- lang('settings.whatsNew') %></div>
-                        <div class="settingsChangelogTitle"><%- lang('settings.updateReleaseNotes') %></div>
+                        <h2 class="settingsChangelogTitle"><%- lang('settings.updateReleaseNotes') %></h2>
                     </div>
                     <div class="settingsChangelogText">
                         <%- lang('settings.noReleaseNotes') %>

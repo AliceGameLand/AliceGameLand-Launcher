@@ -1,39 +1,39 @@
 <div id="overlayContainer" style="display: none;">
-    <div id="serverSelectContent" style="display: none;">
-        <span id="serverSelectHeader"><%- lang('overlay.serverSelectHeader') %></span>
+    <div id="serverSelectContent" role="dialog" aria-modal="true" aria-labelledby="serverSelectHeader" tabindex="-1" style="display: none;">
+        <h2 id="serverSelectHeader"><%- lang('overlay.serverSelectHeader') %></h2>
         <div id="serverSelectList">
             <div id="serverSelectListScrollable">
                 <!-- Server listings populated here. -->
             </div>
         </div>
         <div id="serverSelectActions">
-            <button id="serverSelectConfirm" class="overlayKeybindEnter" type="submit"><%- lang('overlay.serverSelectConfirm') %></button>
+            <button id="serverSelectConfirm" class="overlayKeybindEnter" type="button"><%- lang('overlay.serverSelectConfirm') %></button>
             <div id="serverSelectCancelWrapper">
                 <button id="serverSelectCancel" class="overlayKeybindEsc"><%- lang('overlay.serverSelectCancel') %></button>
             </div>
         </div>
     </div>
-    <div id="accountSelectContent" style="display: none;">
-        <span id="accountSelectHeader"><%- lang('overlay.accountSelectHeader') %></span>
+    <div id="accountSelectContent" role="dialog" aria-modal="true" aria-labelledby="accountSelectHeader" tabindex="-1" style="display: none;">
+        <h2 id="accountSelectHeader"><%- lang('overlay.accountSelectHeader') %></h2>
         <div id="accountSelectList">
             <div id="accountSelectListScrollable">
                 <!-- Accounts populated here. -->
             </div>
         </div>
         <div id="accountSelectActions">
-            <button id="accountSelectConfirm" class="overlayKeybindEnter" type="submit"><%- lang('overlay.accountSelectConfirm') %></button>
+            <button id="accountSelectConfirm" class="overlayKeybindEnter" type="button"><%- lang('overlay.accountSelectConfirm') %></button>
             <div id="accountSelectCancelWrapper">
                 <button id="accountSelectCancel" class="overlayKeybindEsc"><%- lang('overlay.accountSelectCancel') %></button>
             </div>
         </div>
     </div>
-    <div id="overlayContent">
-        <span id="overlayTitle">Lorem Ipsum:<br>Finis Illud</span>
-        <span id="overlayDesc">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud..</span>
+    <div id="overlayContent" role="dialog" aria-modal="true" aria-labelledby="overlayTitle" aria-describedby="overlayDesc" tabindex="-1">
+        <h2 id="overlayTitle"></h2>
+        <p id="overlayDesc"></p>
         <div id="overlayActionContainer">
-            <button id="overlayAcknowledge" class="overlayKeybindEnter">Conare Iterum</button>
+            <button id="overlayAcknowledge" class="overlayKeybindEnter"></button>
             <div id="overlayDismissWrapper">
-                <button id="overlayDismiss" style="display: none;" class="overlayKeybindEsc">Dismiss</button>
+                <button id="overlayDismiss" style="display: none;" class="overlayKeybindEsc"></button>
             </div>
         </div>
     </div>

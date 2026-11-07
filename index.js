@@ -243,7 +243,6 @@ function createWindow() {
     remoteMain.enable(win.webContents)
 
     const data = {
-        bkid: 0,
         lang: (str, placeHolders) => LangLoader.queryEJS(str, placeHolders)
     }
     Object.entries(data).forEach(([key, val]) => ejse.data(key, val))

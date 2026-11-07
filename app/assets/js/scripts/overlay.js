@@ -1,325 +1,168 @@
 /**
- * Script for overlay.ejs
+ * Launcher dialogs and their keyboard focus.
  */
+const overlayContainer = document.getElementById('overlayContainer')
+const overlayMain = document.getElementById('main')
+const serverPickerList = document.getElementById('serverSelectListScrollable')
+const serverPickerConfirm = document.getElementById('serverSelectConfirm')
+const accountPickerList = document.getElementById('accountSelectListScrollable')
+let overlayDialog
+let overlayDismissable
+let overlayReturnFocus
 
-/* Overlay Wrapper Functions */
-
-/**
- * Check to see if the overlay is visible.
- * 
- * @returns {boolean} Whether or not the overlay is visible.
- */
 function isOverlayVisible(){
-    return document.getElementById('main').hasAttribute('overlay')
+    return overlayDialog != null
 }
 
-let overlayHandlerContent
-
-/**
- * Overlay keydown handler for a non-dismissable overlay.
- * 
- * @param {KeyboardEvent} e The keydown event.
- */
-function overlayKeyHandler (e){
-    if(e.key === 'Enter' || e.key === 'Escape'){
-        document.getElementById(overlayHandlerContent).getElementsByClassName('overlayKeybindEnter')[0].click()
-    }
-}
-/**
- * Overlay keydown handler for a dismissable overlay.
- * 
- * @param {KeyboardEvent} e The keydown event.
- */
-function overlayKeyDismissableHandler (e){
-    if(e.key === 'Enter'){
-        document.getElementById(overlayHandlerContent).getElementsByClassName('overlayKeybindEnter')[0].click()
-    } else if(e.key === 'Escape'){
-        document.getElementById(overlayHandlerContent).getElementsByClassName('overlayKeybindEsc')[0].click()
-    }
-}
-
-/**
- * Bind overlay keydown listeners for escape and exit.
- * 
- * @param {boolean} state Whether or not to add new event listeners.
- * @param {string} content The overlay content which will be shown.
- * @param {boolean} dismissable Whether or not the overlay is dismissable 
- */
-function bindOverlayKeys(state, content, dismissable){
-    overlayHandlerContent = content
-    document.removeEventListener('keydown', overlayKeyHandler)
-    document.removeEventListener('keydown', overlayKeyDismissableHandler)
+function toggleOverlay(state = !isOverlayVisible(), dismissable = false, content = 'overlayContent', returnFocus = document.activeElement){
+    const frameActions = document.getElementById('frameHomeActions')
     if(state){
-        if(dismissable){
-            document.addEventListener('keydown', overlayKeyDismissableHandler)
-        } else {
-            document.addEventListener('keydown', overlayKeyHandler)
+        if(!isOverlayVisible()) overlayReturnFocus = returnFocus
+        overlayDialog = document.getElementById(content)
+        overlayDismissable = dismissable
+        for(const panel of overlayContainer.querySelectorAll('[role="dialog"]')){
+            panel.style.display = panel === overlayDialog ? 'block' : 'none'
         }
-    }
-}
-
-/**
- * Toggle the visibility of the overlay.
- * 
- * @param {boolean} toggleState True to display, false to hide.
- * @param {boolean} dismissable Optional. True to show the dismiss option, otherwise false.
- * @param {string} content Optional. The content div to be shown.
- */
-function toggleOverlay(toggleState, dismissable = false, content = 'overlayContent'){
-    if(toggleState == null){
-        toggleState = !document.getElementById('main').hasAttribute('overlay')
-    }
-    if(typeof dismissable === 'string'){
-        content = dismissable
-        dismissable = false
-    }
-    bindOverlayKeys(toggleState, content, dismissable)
-    if(toggleState){
-        document.getElementById('main').setAttribute('overlay', true)
-        // Make things untabbable.
-        $('#main *').attr('tabindex', '-1')
-        $('#' + content).parent().children().hide()
-        $('#' + content).show()
-        if(dismissable){
-            $('#overlayDismiss').show()
-        } else {
-            $('#overlayDismiss').hide()
-        }
-        $('#overlayContainer').fadeIn({
-            duration: 250,
-            start: () => {
-                if(getCurrentView() === VIEWS.settings){
-                    document.getElementById('settingsContainer').style.backgroundColor = 'transparent'
-                }
-            }
-        })
+        document.getElementById('overlayDismiss').style.display = dismissable ? 'inline-flex' : 'none'
+        overlayMain.inert = true
+        frameActions.inert = true
+        overlayContainer.style.display = 'grid'
+        const initial = overlayDialog.querySelector('[aria-pressed="true"], .overlayKeybindEnter:enabled')
+        const focusTarget = initial ?? overlayDialog
+        focusTarget.focus()
     } else {
-        document.getElementById('main').removeAttribute('overlay')
-        // Make things tabbable.
-        $('#main *').removeAttr('tabindex')
-        $('#overlayContainer').fadeOut({
-            duration: 250,
-            start: () => {
-                if(getCurrentView() === VIEWS.settings){
-                    document.getElementById('settingsContainer').style.backgroundColor = 'rgba(0, 0, 0, 0.50)'
-                }
-            },
-            complete: () => {
-                $('#' + content).parent().children().hide()
-                $('#' + content).show()
-                if(dismissable){
-                    $('#overlayDismiss').show()
-                } else {
-                    $('#overlayDismiss').hide()
-                }
-            }
-        })
+        overlayDialog = null
+        overlayContainer.style.display = 'none'
+        overlayMain.inert = false
+        frameActions.inert = false
+        overlayReturnFocus?.focus()
+        overlayReturnFocus = null
     }
 }
 
-async function toggleServerSelection(toggleState){
-    await prepareServerSelectionList()
-    toggleOverlay(toggleState, true, 'serverSelectContent')
-}
+document.addEventListener('keydown', event => {
+    if(!isOverlayVisible()) return
+    if(event.key === 'Escape'){
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        if(overlayDismissable) overlayDialog.querySelector('.overlayKeybindEsc')?.click()
+    } else if(event.key === 'Tab'){
+        const controls = Array.from(overlayDialog.querySelectorAll('button:enabled, a[href]'))
+            .filter(control => control.getClientRects().length)
+        const index = controls.indexOf(document.activeElement)
+        if(index === -1 || (event.shiftKey ? index === 0 : index === controls.length - 1)){
+            event.preventDefault()
+            const target = (event.shiftKey ? controls.at(-1) : controls[0]) ?? overlayDialog
+            target.focus()
+        }
+    }
+}, true)
 
-/**
- * Set the content of the overlay.
- * 
- * @param {string} title Overlay title text.
- * @param {string} description Overlay description text.
- * @param {string} acknowledge Acknowledge button text.
- * @param {string} dismiss Dismiss button text.
- */
 function setOverlayContent(title, description, acknowledge, dismiss = Lang.queryJS('overlay.dismiss')){
     document.getElementById('overlayTitle').innerHTML = title
     document.getElementById('overlayDesc').innerHTML = description
-    document.getElementById('overlayAcknowledge').innerHTML = acknowledge
-    document.getElementById('overlayDismiss').innerHTML = dismiss
+    document.getElementById('overlayAcknowledge').textContent = acknowledge
+    document.getElementById('overlayDismiss').textContent = dismiss
 }
 
-/**
- * Set the onclick handler of the overlay acknowledge button.
- * If the handler is null, a default handler will be added.
- * 
- * @param {function} handler 
- */
 function setOverlayHandler(handler){
-    if(handler == null){
-        document.getElementById('overlayAcknowledge').onclick = () => {
-            toggleOverlay(false)
-        }
-    } else {
-        document.getElementById('overlayAcknowledge').onclick = handler
-    }
+    document.getElementById('overlayAcknowledge').onclick = handler ?? (() => toggleOverlay(false))
 }
 
-/**
- * Set the onclick handler of the overlay dismiss button.
- * If the handler is null, a default handler will be added.
- * 
- * @param {function} handler 
- */
 function setDismissHandler(handler){
-    if(handler == null){
-        document.getElementById('overlayDismiss').onclick = () => {
-            toggleOverlay(false)
-        }
-    } else {
-        document.getElementById('overlayDismiss').onclick = handler
-    }
+    document.getElementById('overlayDismiss').onclick = handler ?? (() => toggleOverlay(false))
 }
 
-/* Server Select View */
+function selectDialogEntry(list, entry){
+    list.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false')
+    entry.setAttribute('aria-pressed', 'true')
+}
 
-document.getElementById('serverSelectConfirm').addEventListener('click', async () => {
-    const listings = document.getElementsByClassName('serverListing')
-    for(let i=0; i<listings.length; i++){
-        if(listings[i].hasAttribute('selected')){
-            const distro = await DistroAPI.getDistribution()
-            const serv = distro.getServerById(listings[i].getAttribute('servid'))
-            updateSelectedServer(serv, distro)
-            refreshServerStatus(true)
-            toggleOverlay(false)
-            return
-        }
-    }
-    // None are selected? Not possible right? Meh, handle it.
-    if(listings.length > 0){
-        const serv = (await DistroAPI.getDistribution()).getServerById(listings[i].getAttribute('servid'))
-        updateSelectedServer(serv)
+async function toggleServerSelection(state){
+    if(!state){
         toggleOverlay(false)
+        return
     }
-})
-
-document.getElementById('accountSelectConfirm').addEventListener('click', async () => {
-    const listings = document.getElementsByClassName('accountListing')
-    for(let i=0; i<listings.length; i++){
-        if(listings[i].hasAttribute('selected')){
-            const authAcc = ConfigManager.setSelectedAccount(listings[i].getAttribute('uuid'))
-            ConfigManager.save()
-            updateSelectedAccount(authAcc)
-            if(getCurrentView() === VIEWS.settings) {
-                await prepareSettings()
-            }
-            toggleOverlay(false)
-            validateSelectedAccount()
-            return
-        }
-    }
-    // None are selected? Not possible right? Meh, handle it.
-    if(listings.length > 0){
-        const authAcc = ConfigManager.setSelectedAccount(listings[0].getAttribute('uuid'))
-        ConfigManager.save()
-        updateSelectedAccount(authAcc)
-        if(getCurrentView() === VIEWS.settings) {
-            await prepareSettings()
-        }
-        toggleOverlay(false)
-        validateSelectedAccount()
-    }
-})
-
-// Bind server select cancel button.
-document.getElementById('serverSelectCancel').addEventListener('click', () => {
-    toggleOverlay(false)
-})
-
-document.getElementById('accountSelectCancel').addEventListener('click', () => {
-    $('#accountSelectContent').fadeOut(250, () => {
-        $('#overlayContent').fadeIn(250)
-    })
-})
-
-function setServerListingHandlers(){
-    const listings = Array.from(document.getElementsByClassName('serverListing'))
-    listings.map((val) => {
-        val.onclick = e => {
-            if(val.hasAttribute('selected')){
-                return
-            }
-            const cListings = document.getElementsByClassName('serverListing')
-            for(let i=0; i<cListings.length; i++){
-                if(cListings[i].hasAttribute('selected')){
-                    cListings[i].removeAttribute('selected')
-                }
-            }
-            val.setAttribute('selected', '')
-            document.activeElement.blur()
-        }
-    })
-}
-
-function setAccountListingHandlers(){
-    const listings = Array.from(document.getElementsByClassName('accountListing'))
-    listings.map((val) => {
-        val.onclick = e => {
-            if(val.hasAttribute('selected')){
-                return
-            }
-            const cListings = document.getElementsByClassName('accountListing')
-            for(let i=0; i<cListings.length; i++){
-                if(cListings[i].hasAttribute('selected')){
-                    cListings[i].removeAttribute('selected')
-                }
-            }
-            val.setAttribute('selected', '')
-            document.activeElement.blur()
-        }
-    })
-}
-
-async function populateServerListings(){
+    if(launchInProgress) return
+    const opener = document.activeElement
     const distro = await DistroAPI.getDistribution()
-    const giaSel = ConfigManager.getSelectedServer()
-    const servers = distro.servers
-    let htmlString = ''
-    for(const serv of servers){
-        htmlString += `<button class="serverListing" servid="${serv.rawServer.id}" ${serv.rawServer.id === giaSel ? 'selected' : ''}>
-            <img class="serverListingImg" src="${serv.rawServer.icon}"/>
-            <div class="serverListingDetails">
-                <span class="serverListingName">${serv.rawServer.name}</span>
-                <span class="serverListingDescription">${serv.rawServer.description}</span>
-                <div class="serverListingInfo">
-                    <div class="serverListingVersion">${serv.rawServer.minecraftVersion}</div>
-                    <div class="serverListingRevision">${serv.rawServer.version}</div>
-                    ${serv.rawServer.mainServer ? `<div class="serverListingStarWrapper">
-                        <svg id="Layer_1" viewBox="0 0 107.45 104.74" width="20px" height="20px">
-                            <defs>
-                                <style>.cls-1{fill:#fff;}.cls-2{fill:none;stroke:#fff;stroke-miterlimit:10;}</style>
-                            </defs>
-                            <path class="cls-1" d="M100.93,65.54C89,62,68.18,55.65,63.54,52.13c2.7-5.23,18.8-19.2,28-27.55C81.36,31.74,63.74,43.87,58.09,45.3c-2.41-5.37-3.61-26.52-4.37-39-.77,12.46-2,33.64-4.36,39-5.7-1.46-23.3-13.57-33.49-20.72,9.26,8.37,25.39,22.36,28,27.55C39.21,55.68,18.47,62,6.52,65.55c12.32-2,33.63-6.06,39.34-4.9-.16,5.87-8.41,26.16-13.11,37.69,6.1-10.89,16.52-30.16,21-33.9,4.5,3.79,14.93,23.09,21,34C70,86.84,61.73,66.48,61.59,60.65,67.36,59.49,88.64,63.52,100.93,65.54Z"/>
-                            <circle class="cls-2" cx="53.73" cy="53.9" r="38"/>
-                        </svg>
-                        <span class="serverListingStarTooltip">${Lang.queryJS('settings.serverListing.mainServer')}</span>
-                    </div>` : ''}
-                </div>
-            </div>
-        </button>`
+    if(launchInProgress || !distro.servers.length) return
+    const selected = ConfigManager.getSelectedServer()
+
+    serverPickerList.replaceChildren(...distro.servers.map(({ rawServer }) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'serverListing'
+        button.dataset.serverId = rawServer.id
+        button.setAttribute('aria-pressed', String(rawServer.id === selected || (selected == null && rawServer.id === distro.getMainServer()?.rawServer.id)))
+
+        const icon = document.createElement('img')
+        icon.className = 'serverListingImg'
+        icon.alt = ''
+        icon.src = rawServer.icon || 'assets/images/SealCircle.png'
+        icon.addEventListener('error', () => { icon.src = 'assets/images/SealCircle.png' }, { once: true })
+
+        const details = document.createElement('span')
+        details.className = 'serverListingDetails'
+        const name = document.createElement('strong')
+        name.textContent = rawServer.name
+        const description = document.createElement('span')
+        description.textContent = rawServer.description || `Minecraft ${rawServer.minecraftVersion}`
+        const revision = document.createElement('span')
+        revision.textContent = rawServer.mainServer
+            ? `${rawServer.version} · ${Lang.queryJS('settings.serverListing.mainServer')}`
+            : rawServer.version
+        details.append(name, description, revision)
+        button.append(icon, details)
+        button.onclick = () => selectDialogEntry(serverPickerList, button)
+        return button
+    }))
+    serverPickerConfirm.onclick = async () => {
+        const entry = serverPickerList.querySelector('[aria-pressed="true"]') ?? serverPickerList.firstElementChild
+        serverPickerConfirm.disabled = true
+        try {
+            if(entry && await selectLauncherServer(entry.dataset.serverId, distro)) toggleOverlay(false)
+        } finally {
+            serverPickerConfirm.disabled = false
+        }
     }
-    document.getElementById('serverSelectListScrollable').innerHTML = htmlString
-
+    toggleOverlay(true, true, 'serverSelectContent', opener)
 }
 
-function populateAccountListings(){
-    const accountsObj = ConfigManager.getAuthAccounts()
-    const accounts = Array.from(Object.keys(accountsObj), v=>accountsObj[v])
-    let htmlString = ''
-    for(let i=0; i<accounts.length; i++){
-        htmlString += `<button class="accountListing" uuid="${accounts[i].uuid}" ${i===0 ? 'selected' : ''}>
-            <img src="https://mc-heads.net/head/${accounts[i].uuid}/40">
-            <div class="accountListingName">${accounts[i].displayName}</div>
-        </button>`
-    }
-    document.getElementById('accountSelectListScrollable').innerHTML = htmlString
-
-}
-
-async function prepareServerSelectionList(){
-    await populateServerListings()
-    setServerListingHandlers()
-}
+document.getElementById('serverSelectCancel').onclick = () => toggleOverlay(false)
 
 function prepareAccountSelectionList(){
-    populateAccountListings()
-    setAccountListingHandlers()
+    const accounts = Object.values(ConfigManager.getAuthAccounts())
+    const current = ConfigManager.getSelectedAccount()?.uuid ?? accounts[0]?.uuid
+    accountPickerList.replaceChildren(...accounts.map(account => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'accountListing'
+        button.dataset.uuid = account.uuid
+        button.setAttribute('aria-pressed', String(account.uuid === current))
+        const icon = document.createElement('img')
+        icon.alt = ''
+        icon.src = `https://mc-heads.net/head/${encodeURIComponent(account.uuid)}/40`
+        const name = document.createElement('span')
+        name.textContent = account.displayName
+        button.append(icon, name)
+        button.onclick = () => selectDialogEntry(accountPickerList, button)
+        return button
+    }))
 }
+
+document.getElementById('accountSelectConfirm').onclick = async () => {
+    const entry = accountPickerList.querySelector('[aria-pressed="true"]')
+    if(!entry) return
+    const account = ConfigManager.setSelectedAccount(entry.dataset.uuid)
+    ConfigManager.save()
+    updateSelectedAccount(account)
+    if(getCurrentView() === VIEWS.settings) await prepareSettings()
+    toggleOverlay(false)
+    await validateSelectedAccount()
+}
+
+document.getElementById('accountSelectCancel').onclick = () => toggleOverlay(true, true)
+
+setOverlayHandler(null)
+setDismissHandler(null)

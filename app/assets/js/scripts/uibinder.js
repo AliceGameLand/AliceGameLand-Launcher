@@ -7,6 +7,7 @@ const path          = require('path')
 const { Type }      = require('helios-distribution-types')
 
 const AuthManager   = require('./assets/js/authmanager')
+const AccountAvatar = require('./assets/js/accountavatar')
 const ConfigManager = require('./assets/js/configmanager')
 const { DistroAPI } = require('./assets/js/distromanager')
 
@@ -26,6 +27,7 @@ const VIEWS = {
 let currentView
 
 let uiAudioContext
+let uiClickBuffer
 let uiSoundAvailable = true
 let lastUiSoundAt = 0
 
@@ -36,6 +38,7 @@ function playUiButtonSound(){
     try {
         if(!uiAudioContext || uiAudioContext.state === 'closed'){
             uiAudioContext = new window.AudioContext()
+            uiClickBuffer = null
         }
         if(uiAudioContext.state === 'suspended'){
             void uiAudioContext.resume().catch(() => {
@@ -43,19 +46,28 @@ function playUiButtonSound(){
             })
         }
 
-        const now = uiAudioContext.currentTime
-        const tone = uiAudioContext.createOscillator()
-        const volume = uiAudioContext.createGain()
-        tone.type = 'triangle'
-        tone.frequency.setValueAtTime(570, now)
-        tone.frequency.exponentialRampToValueAtTime(410, now + 0.07)
-        volume.gain.setValueAtTime(0.0001, now)
-        volume.gain.exponentialRampToValueAtTime(0.035, now + 0.006)
-        volume.gain.exponentialRampToValueAtTime(0.0001, now + 0.085)
-        tone.connect(volume)
-        volume.connect(uiAudioContext.destination)
-        tone.start(now)
-        tone.stop(now + 0.09)
+        if(!uiClickBuffer){
+            const rate = uiAudioContext.sampleRate
+            uiClickBuffer = uiAudioContext.createBuffer(1, Math.round(rate * 0.05), rate)
+            const samples = uiClickBuffer.getChannelData(0)
+            for(let i = 0; i < samples.length; i++){
+                const attack = Math.min(1, i / (rate * 0.001))
+                samples[i] = (Math.random() * 2 - 1) * attack * Math.exp(-i / (rate * 0.0065)) * 0.24
+            }
+        }
+        const tap = uiAudioContext.createBufferSource()
+        const filter = uiAudioContext.createBiquadFilter()
+        filter.type = 'lowpass'
+        filter.frequency.value = 1700
+        filter.Q.value = 0.5
+        tap.buffer = uiClickBuffer
+        tap.connect(filter)
+        filter.connect(uiAudioContext.destination)
+        tap.onended = () => {
+            tap.disconnect()
+            filter.disconnect()
+        }
+        tap.start()
     } catch {
         // Audio is optional; do not interrupt login or launching without an output device.
         uiSoundAvailable = false
@@ -65,8 +77,8 @@ function playUiButtonSound(){
 document.addEventListener('click', (event) => {
     if(!event.isTrusted || !(event.target instanceof Element)) return
 
-    const control = event.target.closest('button, a[href], input[type="checkbox"], #image_seal_container[update]')
-    if(!control || control.disabled || !control.closest('#main, #overlayContainer')) return
+    const control = event.target.closest('button, a[href], input[type="checkbox"]')
+    if(!control || control.disabled || !control.closest('#main, #overlayContainer, #frameHomeActions')) return
     if(event.timeStamp - lastUiSoundAt < 80) return
 
     lastUiSoundAt = event.timeStamp
@@ -85,14 +97,21 @@ document.addEventListener('click', (event) => {
  * @param {*} onNextFade Optional. Callback function to execute when the next view
  * fades in.
  */
-function switchView(current, next, currentFadeTime = 500, nextFadeTime = 500, onCurrentFade = () => {}, onNextFade = () => {}){
+function switchView(current, next, currentFadeTime = 140, nextFadeTime = 200, onCurrentFade = () => {}, onNextFade = () => {}){
     currentView = next
-    $(`${current}`).fadeOut(currentFadeTime, async () => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    document.getElementById('frameHomeActions').hidden = next !== VIEWS.landing
+    const showNext = async () => {
         await onCurrentFade()
-        $(`${next}`).fadeIn(nextFadeTime, async () => {
+        $(next).fadeIn(reduced ? 0 : Math.min(nextFadeTime, 220), async () => {
+            if(next === VIEWS.landing){
+                document.querySelector('.home-server[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+            }
             await onNextFade()
         })
-    })
+    }
+    if(current) $(current).fadeOut(reduced ? 0 : Math.min(currentFadeTime, 160), showNext)
+    else void showNext()
 }
 
 /**
@@ -113,10 +132,7 @@ async function showMainUI(data){
 
     await prepareSettings(true)
     updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()), data)
-    refreshServerStatus()
     setTimeout(() => {
-        document.getElementById('frameBar').style.backgroundColor = 'rgba(0, 0, 0, 0.5)'
-        document.body.style.backgroundImage = `url('assets/images/backgrounds/${document.body.getAttribute('bkid')}.jpg')`
         $('#main').show()
 
         const isLoggedIn = Object.keys(ConfigManager.getAuthAccounts()).length > 0
@@ -127,33 +143,33 @@ async function showMainUI(data){
             validateSelectedAccount()
         }
 
+        let next = VIEWS.landing
         if(ConfigManager.isFirstLaunch()){
-            currentView = VIEWS.welcome
-            $(VIEWS.welcome).fadeIn(1000)
-        } else {
-            if(isLoggedIn){
-                currentView = VIEWS.landing
-                $(VIEWS.landing).fadeIn(1000)
-            } else {
-                loginOptionsCancelEnabled(false)
-                loginOptionsViewOnLoginSuccess = VIEWS.landing
-                loginOptionsViewOnLoginCancel = VIEWS.loginOptions
-                currentView = VIEWS.loginOptions
-                $(VIEWS.loginOptions).fadeIn(1000)
-            }
+            next = VIEWS.welcome
+        } else if(!isLoggedIn){
+            loginOptionsCancelEnabled(false)
+            loginOptionsViewOnLoginSuccess = VIEWS.landing
+            loginOptionsViewOnLoginCancel = VIEWS.loginOptions
+            next = VIEWS.loginOptions
         }
 
-        setTimeout(() => {
-            $('#loadingContainer').fadeOut(500)
-        }, 250)
+        // Reveal a painted destination underneath the loading screen.
+        switchView(null, next, 0, 0, undefined, () => {
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            if(!reduced) $('#loadingContainer').delay(250)
+            $('#loadingContainer').fadeOut(reduced ? 0 : 500, () => {
+                document.body.classList.remove('launcher-starting')
+            })
+        })
         
     }, 750)
 }
 
 function showFatalStartupError(){
     setTimeout(() => {
-        $('#loadingContainer').fadeOut(250, () => {
-            document.getElementById('overlayContainer').style.background = 'none'
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        $('#loadingContainer').fadeOut(reduced ? 0 : 250, () => {
+            document.body.classList.remove('launcher-starting')
             setOverlayContent(
                 Lang.queryJS('uibinder.startup.fatalErrorTitle'),
                 Lang.queryJS('uibinder.startup.fatalErrorMessage'),
@@ -174,8 +190,7 @@ function showFatalStartupError(){
  * @param {Object} data The distro index object.
  */
 function onDistroRefresh(data){
-    updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()), data)
-    refreshServerStatus()
+    updateSelectedServer(data.getServerById(ConfigManager.getSelectedServer()) ?? data.getMainServer(), data)
     syncModConfigurations(data)
     ensureJavaSettings(data)
 }
@@ -408,10 +423,7 @@ async function validateSelectedAccount(){
             setDismissHandler(() => {
                 if(accLen > 1){
                     prepareAccountSelectionList()
-                    $('#overlayContent').fadeOut(250, () => {
-                        bindOverlayKeys(true, 'accountSelectContent', true)
-                        $('#accountSelectContent').fadeIn(250)
-                    })
+                    toggleOverlay(true, true, 'accountSelectContent')
                 } else {
                     const accountsObj = ConfigManager.getAuthAccounts()
                     const accounts = Array.from(Object.keys(accountsObj), v => accountsObj[v])
