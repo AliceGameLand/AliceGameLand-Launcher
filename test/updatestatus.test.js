@@ -12,6 +12,7 @@ function setup(){
     }
     let listener
     const sent = []
+    const visible = []
     const context = vm.createContext({
         document: { getElementById: element },
         Lang: { queryJS: key => key },
@@ -20,14 +21,27 @@ function setup(){
         isPrerelease: () => false, populateVersionInformation: () => {},
         loggerAutoUpdater: { info: () => {}, error: () => {}, debug: () => {} },
         ipcRenderer: { on: (name, handler) => { listener = handler }, send: (...args) => sent.push(args) },
-        setInterval: () => 1, showUpdateUI: () => {}
+        setInterval: () => 1, showUpdateUI: (value = true) => visible.push(value)
     })
     const settings = fs.readFileSync(path.join(__dirname, '../app/assets/js/scripts/settings.js'), 'utf8')
     vm.runInContext(settings.slice(settings.indexOf('const settingsTabUpdate '), settings.indexOf('async function prepareSettings')), context)
     const core = fs.readFileSync(path.join(__dirname, '../app/assets/js/scripts/uicore.js'), 'utf8')
     vm.runInContext(core.slice(core.indexOf('let updateCheckListener'), core.indexOf('function changeAllowPrerelease')), context)
-    return { context, element, sent, notify: state => listener(null, state) }
+    return { context, element, sent, visible, notify: (state, info) => listener(null, state, info) }
 }
+
+test('Windows announces an update before download completes and enables install only afterwards', () => {
+    const ui = setup()
+    const info = { version: '1.0.21', releaseName: 'Update', releaseNotes: '' }
+    ui.notify('update-available', info)
+    assert.deepEqual(ui.visible, [true])
+    assert.equal(ui.element('settingsUpdateActionButton').disabled, true)
+    assert.equal(ui.element('settingsUpdateActionButton').innerHTML, 'settings.updates.downloadingButton')
+    ui.notify('update-downloaded', info)
+    assert.equal(ui.element('settingsUpdateActionButton').disabled, false)
+    ui.element('settingsUpdateActionButton').onclick()
+    assert.deepEqual(ui.sent, [['autoUpdateAction', 'installUpdateNow']])
+})
 
 test('Latest result clears stale release details and allows another check', () => {
     const ui = setup()
