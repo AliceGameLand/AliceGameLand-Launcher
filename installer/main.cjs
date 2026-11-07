@@ -5,11 +5,14 @@ const { spawn, execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 const { createHash } = require('node:crypto')
 const { validateDestination, installerArguments } = require('./paths.cjs')
+const { findUpdateTarget } = require('./update-target.cjs')
 
 const execute = promisify(execFile)
 let window
 let installing = false
 let installedExecutable
+let updateTarget
+let updateError
 const manifest = require('./payload.json')
 const defaults = {
     user: path.join(process.env.LOCALAPPDATA, 'Programs', 'alice-gameland-launcher'),
@@ -27,7 +30,11 @@ function report(phase, detail = {}){
 if(!app.requestSingleInstanceLock()) app.quit()
 else {
     app.on('second-instance', () => { window?.show(); window?.focus() })
-    app.whenReady().then(() => {
+    app.whenReady().then(async () => {
+        if(process.argv?.includes('--updated')){
+            try { updateTarget = await findUpdateTarget(execute, fs.existsSync) }
+            catch(error){ updateError = error.message }
+        }
         const area = screen.getPrimaryDisplay().workAreaSize
         window = new BrowserWindow({
             width: Math.min(720, area.width - 24), height: Math.min(520, area.height - 24),
@@ -48,7 +55,7 @@ app.on('window-all-closed', () => app.quit())
 
 ipcMain.handle('setup:info', event => {
     trusted(event)
-    return { version: manifest.version, defaults }
+    return { version: manifest.version, defaults, updateTarget, updateError }
 })
 ipcMain.handle('setup:folder', async (event, current) => {
     trusted(event)
@@ -72,8 +79,9 @@ ipcMain.handle('setup:install', async (event, options) => {
     if(installing) return { ok: false, message: '설치가 이미 진행 중입니다.' }
     installing = true
     try {
-        const destination = validateDestination(options?.destination)
-        const mode = options?.mode === 'all' ? 'all' : 'user'
+        if(updateError) throw new Error(updateError)
+        const destination = updateTarget?.destination ?? validateDestination(options?.destination)
+        const mode = updateTarget?.mode ?? (options?.mode === 'all' ? 'all' : 'user')
         report('checking')
         const processes = await execute('tasklist.exe', ['/FI', 'IMAGENAME eq 앨리스의 게임랜드.exe', '/FO', 'CSV', '/NH'], { windowsHide: true })
         // CSV process rows are recognizable even when tasklist uses the system code page.
@@ -93,7 +101,7 @@ ipcMain.handle('setup:install', async (event, options) => {
         report('installing', { destination, mode })
         await new Promise((resolve, reject) => {
             // NSIS requires /D to be last and unquoted, including paths with spaces.
-            const child = spawn(payload, installerArguments(destination, mode), { windowsHide: true, windowsVerbatimArguments: true, stdio: 'ignore' })
+            const child = spawn(payload, installerArguments(destination, mode, Boolean(updateTarget)), { windowsHide: true, windowsVerbatimArguments: true, stdio: 'ignore' })
             child.once('error', reject)
             child.once('close', code => code === 0 ? resolve() : reject(new Error(code === 1223 ? '설치 권한 요청이 취소되었습니다. 다시 시도할 수 있습니다.' : '설치를 완료하지 못했습니다. 설치 위치와 권한을 확인한 뒤 다시 시도해 주세요.')))
         })

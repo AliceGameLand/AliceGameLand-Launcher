@@ -27,6 +27,16 @@ api.info().then(value => {
     info = value
     byId('version').textContent = 'v' + value.version
     byId('destination').value = value.defaults.user
+    if(value.updateError){ info = null; error(value.updateError); byId('install').disabled = true; return }
+    if(value.updateTarget){
+        byId('intro').querySelector('h2').textContent = '업데이트를 설치할까요?'
+        byId('intro').querySelector('.description').textContent = '기존 설치 위치에 새 버전을 설치합니다.'
+        byId('destination').value = value.updateTarget.destination
+        document.querySelector('[name=mode][value='+value.updateTarget.mode+']').checked = true
+        byId('scope').hidden = true
+        byId('browse').hidden = true
+        byId('install').textContent = '업데이트 설치'
+    }
 }).catch(() => error('설치 정보를 불러오지 못했습니다. 설치파일을 다시 실행해 주세요.'))
 byId('browse').onclick = async () => {
     if(busy) return

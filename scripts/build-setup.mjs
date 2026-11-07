@@ -3,6 +3,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { build, Platform } from 'electron-builder'
+import { executeAppBuilderAsJson } from 'app-builder-lib/out/util/appBuilder.js'
 
 const require = createRequire(import.meta.url)
 const root = path.resolve(import.meta.dirname, '..')
@@ -57,3 +58,9 @@ await build({
         portable: { artifactName: 'alice-gameland-setup-${version}.exe', requestExecutionLevel: 'user', splashImage: null }
     }
 })
+
+// Both manual downloads and the updater open the same custom setup UI.
+const setup = path.join(root, 'dist/custom-setup', `alice-gameland-setup-${metadata.version}.exe`)
+const updateInfo = await executeAppBuilderAsJson(['blockmap', '--input', setup, '--output', setup + '.blockmap'])
+const updateFile = { url:path.basename(setup), sha512:updateInfo.sha512, size:fs.statSync(setup).size }
+fs.writeFileSync(path.join(root, 'dist/custom-setup/latest.yml'), require('js-yaml').dump({ version:metadata.version, files:[updateFile], path:updateFile.url, sha512:updateFile.sha512, releaseDate:new Date().toISOString() }))

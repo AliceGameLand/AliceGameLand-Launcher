@@ -46,7 +46,7 @@ async function fixture(t, options = {}){
         }
     }
     const manifest = { version:'1.0.19', executable:'QA-Launcher.exe', sha256:options.badHash ? 'invalid' : createHash('sha256').update(bytes).digest('hex') }
-    const req = name => name === 'electron' ? electron : name === './payload.json' ? manifest : name === './paths.cjs' ? require('../installer/paths.cjs') : name === 'node:child_process' ? childProcess : require(name)
+    const req = name => name === 'electron' ? electron : name === './payload.json' ? manifest : name === './update-target.cjs' ? require('../installer/update-target.cjs') : name === './paths.cjs' ? require('../installer/paths.cjs') : name === 'node:child_process' ? childProcess : require(name)
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../installer/main.cjs'), 'utf8'), { require:req, __dirname:path.join(__dirname,'../installer'), process:{ env:process.env, resourcesPath:directory }, console })
     await Promise.resolve()
     const invoke = (name, value) => handlers.get('setup:' + name)({ sender:window.webContents }, value)
