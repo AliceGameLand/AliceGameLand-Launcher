@@ -35,12 +35,15 @@ test('Windows announces an update before download completes and enables install 
     const info = { version: '1.0.21', releaseName: 'Update', releaseNotes: '' }
     ui.notify('update-available', info)
     assert.deepEqual(ui.visible, [true])
+    assert.equal(ui.element('settingsUpdateActionButton').disabled, false)
+    assert.equal(ui.element('settingsUpdateActionButton').innerHTML, 'settings.updates.startDownloadButton')
+    assert.deepEqual(ui.sent, [])
+    ui.element('settingsUpdateActionButton').onclick()
     assert.equal(ui.element('settingsUpdateActionButton').disabled, true)
-    assert.equal(ui.element('settingsUpdateActionButton').innerHTML, 'settings.updates.downloadingButton')
     ui.notify('update-downloaded', info)
     assert.equal(ui.element('settingsUpdateActionButton').disabled, false)
     ui.element('settingsUpdateActionButton').onclick()
-    assert.deepEqual(ui.sent, [['autoUpdateAction', 'installUpdateNow']])
+    assert.deepEqual(ui.sent, [['autoUpdateAction', 'downloadUpdate'], ['autoUpdateAction', 'installUpdateNow']])
 })
 
 test('Latest result clears stale release details and allows another check', () => {

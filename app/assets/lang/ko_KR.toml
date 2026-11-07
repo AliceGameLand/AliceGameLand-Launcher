@@ -278,6 +278,7 @@ retryButton = "확인 실패 · 다시 시도"
 newReleaseTitle = "새 업데이트를 설치할 수 있습니다"
 newPreReleaseTitle = "새 미리보기 버전을 설치할 수 있습니다"
 downloadingButton = "다운로드 중…"
+startDownloadButton = "다운로드"
 downloadButton = 'GitHub에서 다운로드<span style="font-size: 10px;color: gray;text-shadow: none !important;">런처를 종료하고 dmg 파일을 실행하여 업데이트하세요.</span>'
 latestVersionTitle = "최신 버전을 사용하고 있습니다"
 checkForUpdatesButton = "업데이트 확인"

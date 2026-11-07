@@ -21,6 +21,8 @@ LangLoader.setupLanguage()
 
 // Setup auto updater.
 function initAutoUpdater(event, data) {
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = false
 
     if(data){
         autoUpdater.allowPrerelease = true
@@ -81,6 +83,11 @@ ipcMain.on('autoUpdateAction', (event, arg, data) => {
             break
         case 'installUpdateNow':
             autoUpdater.quitAndInstall()
+            break
+        case 'downloadUpdate':
+            autoUpdater.downloadUpdate().catch(err => {
+                event.sender.send('autoUpdateNotification', 'realerror', err)
+            })
             break
         default:
             console.log('Unknown argument', arg)

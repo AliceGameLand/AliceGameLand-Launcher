@@ -1430,7 +1430,10 @@ function populateSettingsUpdateInformation(data, checked = false){
                 shell.openExternal(data.darwindownload)
             })
         } else {
-            settingsUpdateButtonStatus(Lang.queryJS('settings.updates.downloadingButton'), true)
+            settingsUpdateButtonStatus(Lang.queryJS('settings.updates.startDownloadButton'), false, () => {
+                settingsUpdateButtonStatus(Lang.queryJS('settings.updates.downloadingButton'), true)
+                ipcRenderer.send('autoUpdateAction', 'downloadUpdate')
+            })
         }
     } else {
         settingsUpdateTitle.innerHTML = Lang.queryJS(checked ? 'settings.updates.latestVersionTitle' : 'settings.updates.checkUpdatesTitle')
