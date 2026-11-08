@@ -1,18 +1,18 @@
 const got = require('got')
 const options = { timeout: { request: 12000 }, retry: { limit: 1 } }
-const { mirrorUrl } = require('./reliabledownload')
+const { directUrl } = require('./reliabledownload')
 
 async function getLatestRelease(repository){
     const url = `https://api.github.com/repos/AliceGameLand/${repository}/releases/latest`
-    try { return await got.get(mirrorUrl(url), options).json() }
-    catch { return got.get(url, options).json() }
+    return got.get(url, options).json()
 }
 
 async function getAssetUrl(asset){
     if(!/^https:\/\/api\.github\.com\/repos\/AliceGameLand\//.test(asset.url)) throw new Error('Unexpected release asset URL')
     if(asset.browser_download_url){
-        const mirrored = mirrorUrl(asset.browser_download_url)
-        if(mirrored !== asset.browser_download_url) return mirrored
+        const url = new URL(asset.browser_download_url)
+        if(url.protocol !== 'https:' || url.hostname !== 'github.com' || !/^\/AliceGameLand\/(AliceGameLand-Launcher|AliceGameLand-Distribution)\/releases\/download\//.test(url.pathname)) throw new Error('Unexpected release download URL')
+        return directUrl(url.href)
     }
     const response = await got.get(asset.url, { ...options, followRedirect: false, headers: { accept: 'application/octet-stream' } })
     const location = response.headers.location

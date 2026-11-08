@@ -2,18 +2,14 @@ const got = require('got')
 const fs = require('fs-extra')
 const path = require('node:path')
 const { pipeline } = require('node:stream/promises')
-const BASE = 'https://alice-launcher-delivery.gptnr2140.workers.dev'
-
-function mirrorUrl(value){
+// Resolve the former repository owner without routing through a third party.
+function directUrl(value){
     const url = new URL(value)
-    if(url.protocol !== 'https:') return value
-    if(url.hostname === 'api.github.com' && /^\/repos\/AliceGameLand\/(AliceGameLand-Launcher|AliceGameLand-Distribution)\/releases\//.test(url.pathname)){
-        return BASE + '/api' + url.pathname
+    if(url.protocol === 'https:' && url.hostname === 'github.com'){
+        url.pathname = url.pathname.replace(/^\/Dot0420\/(AliceGameLand-(?:Launcher|Distribution))\//, '/AliceGameLand/$1/')
+        return url.href
     }
-    const match = url.pathname.match(/^\/(?:AliceGameLand|Dot0420)\/(AliceGameLand-Launcher|AliceGameLand-Distribution)\/releases\/download\/([^/]+)\/([^/]+)$/)
-    return url.hostname === 'github.com' && match
-        ? `${BASE}/download/${match[1]}/${match[2]}/${match[3]}${url.search}`
-        : value
+    return value
 }
 
 // Stream into a temporary file; failed attempts cannot replace a valid game file.
@@ -21,8 +17,8 @@ async function downloadFile(url, destination, onProgress){
     const temporary = destination + '.alice-download'
     await fs.ensureDir(path.dirname(destination))
     let failure
-    const mirror = mirrorUrl(url)
-    const attempts = mirror === url ? [url, url, url] : [mirror, url, mirror]
+    const direct = directUrl(url)
+    const attempts = [direct, direct, direct]
     for(const candidate of attempts){
         try {
             onProgress?.({ transferred: 0 })
@@ -39,4 +35,4 @@ async function downloadFile(url, destination, onProgress){
     throw new Error(`Download failed: ${path.basename(destination)} (${new URL(url).hostname}, ${failure?.response?.statusCode || failure?.code || 'network error'})`)
 }
 
-module.exports = { mirrorUrl, downloadFile }
+module.exports = { directUrl, downloadFile }

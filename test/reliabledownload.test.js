@@ -4,13 +4,13 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const http = require('node:http')
-const { mirrorUrl, downloadFile } = require('../app/assets/js/reliabledownload')
+const { directUrl, downloadFile } = require('../app/assets/js/reliabledownload')
 
-test('delivery only mirrors Alice release downloads and normalizes the former owner', () => {
-    const a = mirrorUrl('https://github.com/Dot0420/AliceGameLand-Distribution/releases/download/test/a.jar?v=hash')
-    assert.equal(a, 'https://alice-launcher-delivery.gptnr2140.workers.dev/download/AliceGameLand-Distribution/test/a.jar?v=hash')
-    assert.equal(mirrorUrl('https://maven.fabricmc.net/a.jar'), 'https://maven.fabricmc.net/a.jar')
-    assert.equal(mirrorUrl('https://github.com/other/repo/releases/download/test/a.jar'), 'https://github.com/other/repo/releases/download/test/a.jar')
+test('downloads remain on GitHub and normalize the former owner', () => {
+    const a = directUrl('https://github.com/Dot0420/AliceGameLand-Distribution/releases/download/test/a.jar?v=hash')
+    assert.equal(a, 'https://github.com/AliceGameLand/AliceGameLand-Distribution/releases/download/test/a.jar?v=hash')
+    assert.equal(directUrl('https://maven.fabricmc.net/a.jar'), 'https://maven.fabricmc.net/a.jar')
+    assert.equal(directUrl('https://github.com/other/repo/releases/download/test/a.jar'), 'https://github.com/other/repo/releases/download/test/a.jar')
 })
 
 test('download retries transient failures and preserves existing files on permanent failure', async t => {
