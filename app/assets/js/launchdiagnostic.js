@@ -18,7 +18,7 @@ function createLaunchDiagnostic({ version, server, stage, error, homeDirectory }
         `Server: ${server ?? '-'}`,
         `Stage: ${stage}`,
         `Error: ${error?.name ?? 'Error'}${error?.code ? ` (${error.code})` : ''}`,
-        error?.message ?? stage
+        error?.message ?? error?.displayable ?? (typeof error === 'string' ? error : stage)
     ].join('\n'), homeDirectory)
 }
 

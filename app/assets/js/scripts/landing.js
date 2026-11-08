@@ -464,7 +464,7 @@ async function dlAsync(serverId, attempt) {
         DistroAPI.isDevMode()
     )
 
-    fullRepairModule.spawnReceiver()
+    fullRepairModule.spawnReceiver({ ALICE_DOWNLOAD_MODULE: require.resolve('./assets/js/reliabledownload') })
     fullRepairModule.validationCacheModule = require.resolve('./assets/js/filevalidationcache')
 
     const receiver = fullRepairModule.childProcess
