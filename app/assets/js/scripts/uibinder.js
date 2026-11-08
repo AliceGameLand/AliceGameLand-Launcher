@@ -31,6 +31,21 @@ let uiClickBuffer
 let uiSoundAvailable = true
 let lastUiSoundAt = 0
 
+/** A short, rounded tap with a soft low body instead of a noise click. */
+function createUiClickSamples(rate){
+    const samples = new Float32Array(Math.round(rate * 0.04))
+    for(let i = 0; i < samples.length; i++){
+        const time = i / rate
+        const attack = Math.min(1, time / 0.0005)
+        const phase = 2 * Math.PI * (520 * time + 160 * 0.0028 * (1 - Math.exp(-time / 0.0028)))
+        const body = Math.sin(phase) * Math.exp(-time / 0.0065) * 0.1
+        const touch = Math.sin(2 * Math.PI * 1400 * time) * Math.exp(-time / 0.003) * 0.035
+        const low = Math.sin(2 * Math.PI * 280 * time) * Math.exp(-time / 0.008) * 0.025
+        samples[i] = (body + touch + low) * attack
+    }
+    return samples
+}
+
 /** Play a quiet click only for actual launcher button interactions. */
 function playUiButtonSound(){
     if(!uiSoundAvailable || !window.AudioContext) return
@@ -48,17 +63,14 @@ function playUiButtonSound(){
 
         if(!uiClickBuffer){
             const rate = uiAudioContext.sampleRate
-            uiClickBuffer = uiAudioContext.createBuffer(1, Math.round(rate * 0.05), rate)
-            const samples = uiClickBuffer.getChannelData(0)
-            for(let i = 0; i < samples.length; i++){
-                const attack = Math.min(1, i / (rate * 0.001))
-                samples[i] = (Math.random() * 2 - 1) * attack * Math.exp(-i / (rate * 0.0065)) * 0.24
-            }
+            const samples = createUiClickSamples(rate)
+            uiClickBuffer = uiAudioContext.createBuffer(1, samples.length, rate)
+            uiClickBuffer.getChannelData(0).set(samples)
         }
         const tap = uiAudioContext.createBufferSource()
         const filter = uiAudioContext.createBiquadFilter()
         filter.type = 'lowpass'
-        filter.frequency.value = 1700
+        filter.frequency.value = 2400
         filter.Q.value = 0.5
         tap.buffer = uiClickBuffer
         tap.connect(filter)
