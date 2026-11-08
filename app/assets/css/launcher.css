@@ -1716,3 +1716,11 @@ input:checked + .toggleSwitchSlider:before {
 /* Preserve illustration continuity during server selection. */
 .home-illustration { position: relative; }
 .home-art-outgoing { position: absolute; inset: 0; pointer-events: none; }
+
+#settingsUpdateDownload { flex: 1 0 100%; min-width: 0; }
+.update-download-readout { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 10px; color: var(--ink); font-weight: 650; }
+#settingsUpdateDownloadPercent, #settingsUpdateDownloadSize { font-variant-numeric: tabular-nums; }
+#settingsUpdateDownloadBar { display: block; width: 100%; height: 8px; border: 0; border-radius: 4px; overflow: hidden; accent-color: var(--blue); }
+#settingsUpdateDownloadBar::-webkit-progress-bar { background: var(--blue-wash); border-radius: 4px; }
+#settingsUpdateDownloadBar::-webkit-progress-value { background: var(--blue); border-radius: 4px; }
+#settingsUpdateDownloadSize { display: block; margin-top: 8px; color: var(--muted); font-size: 13px; }

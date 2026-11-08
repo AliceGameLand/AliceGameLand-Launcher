@@ -55,7 +55,11 @@ if(!isDev){
                 populateSettingsUpdateInformation(info)
                 showUpdateUI()
                 break
+            case 'download-progress':
+                settingsUpdateDownloadProgress(info)
+                break
             case 'update-downloaded':
+                settingsUpdateDownloadProgress()
                 loggerAutoUpdater.info('Update ' + info.version + ' ready to be installed.')
                 settingsUpdateButtonStatus(Lang.queryJS('uicore.autoUpdate.installNowButton'), false, () => {
                     if(!isDev){

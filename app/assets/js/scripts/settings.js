@@ -1423,6 +1423,23 @@ const settingsUpdateActionButton   = document.getElementById('settingsUpdateActi
  * @param {boolean} disabled Optional. Disable or enable the button
  * @param {function} handler Optional. New button event handler.
  */
+let settingsUpdateDownloadActive = false
+function settingsUpdateDownloadProgress(info = null){
+    settingsUpdateDownloadActive = info != null
+    document.getElementById('settingsUpdateDownload').hidden = !settingsUpdateDownloadActive
+    if(!info) return
+    document.getElementById('settingsUpdateDownloadLabel').textContent = Lang.queryJS('settings.updates.downloadingButton')
+    const percent = Number.isFinite(info.percent) ? Math.min(100, Math.max(0, info.percent)) : null
+    const bar = document.getElementById('settingsUpdateDownloadBar')
+    if(percent == null) bar.removeAttribute('value')
+    else bar.value = percent
+    document.getElementById('settingsUpdateDownloadPercent').textContent = percent == null ? '—' : Math.floor(percent) + '%'
+    const mb = bytes => (Math.max(0, bytes) / 1048576).toFixed(1) + ' MB'
+    document.getElementById('settingsUpdateDownloadSize').textContent = Number.isFinite(info.total) && info.total > 0
+        ? mb(Math.min(info.transferred || 0, info.total)) + ' / ' + mb(info.total)
+        : ''
+}
+
 function settingsUpdateButtonStatus(text, disabled = false, handler = null){
     settingsUpdateActionButton.innerHTML = text
     settingsUpdateActionButton.disabled = disabled
@@ -1444,17 +1461,20 @@ function populateSettingsUpdateInformation(data, checked = false){
         settingsUpdateChangelogText.innerHTML = data.releaseNotes
         populateVersionInformation(data.version, settingsUpdateVersionValue, settingsUpdateVersionTitle, settingsUpdateVersionCheck)
         
+        if(settingsUpdateDownloadActive) return
         if(process.platform === 'darwin'){
             settingsUpdateButtonStatus(Lang.queryJS('settings.updates.downloadButton'), false, () => {
                 shell.openExternal(data.darwindownload)
             })
         } else {
             settingsUpdateButtonStatus(Lang.queryJS('settings.updates.startDownloadButton'), false, () => {
+                settingsUpdateDownloadProgress({ percent:0 })
                 settingsUpdateButtonStatus(Lang.queryJS('settings.updates.downloadingButton'), true)
                 ipcRenderer.send('autoUpdateAction', 'downloadUpdate')
             })
         }
     } else {
+        settingsUpdateDownloadProgress()
         settingsUpdateTitle.innerHTML = Lang.queryJS(checked ? 'settings.updates.latestVersionTitle' : 'settings.updates.checkUpdatesTitle')
         settingsUpdateChangelogCont.style.display = 'none'
         populateVersionInformation(remote.app.getVersion(), settingsUpdateVersionValue, settingsUpdateVersionTitle, settingsUpdateVersionCheck)

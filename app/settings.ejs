@@ -371,6 +371,14 @@
                 <div id="settingsUpdateActionContainer">
                     <button id="settingsUpdateActionButton"><%- lang('settings.checkForUpdates') %></button>
                 </div>
+                <div id="settingsUpdateDownload" hidden>
+                    <div class="update-download-readout">
+                        <span id="settingsUpdateDownloadLabel"></span>
+                        <span id="settingsUpdateDownloadPercent" aria-hidden="true">0%</span>
+                    </div>
+                    <progress id="settingsUpdateDownloadBar" max="100" value="0" aria-labelledby="settingsUpdateDownloadLabel"></progress>
+                    <span id="settingsUpdateDownloadSize"></span>
+                </div>
             </div>
             <div class="settingsChangelogContainer">
                 <div class="settingsChangelogContent">
