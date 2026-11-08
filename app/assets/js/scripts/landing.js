@@ -10,8 +10,11 @@ const { ensureDir } = require('fs-extra')
 const DiscordWrapper    = require('./assets/js/discordwrapper')
 const NeoForgeInstaller = require('./assets/js/neoforgeinstaller')
 const ProcessBuilder    = require('./assets/js/processbuilder')
+const { createLaunchDiagnostic } = require('./assets/js/launchdiagnostic')
+const { clipboard: launchClipboard } = require('electron')
 
 const launchButton      = document.getElementById('launch_button')
+const launchButtonLabel = document.getElementById('launch_button_label')
 const launchContent     = document.getElementById('launch_content')
 const launchDetails     = document.getElementById('launch_details')
 const launchProgress    = document.getElementById('launch_progress')
@@ -28,11 +31,13 @@ let homeDistribution
 let statusRequest = 0
 let launchInProgress = false
 let gameFolderOpening = false
-let proc
+const runningGames = new Map()
+let launchAttempt = 0
 
 function refreshLaunchControls(){
     openGameFolderButton.disabled = gameFolderOpening || ConfigManager.getSelectedServer() == null
-    launchButton.disabled = launchInProgress || proc != null || ConfigManager.getSelectedServer() == null
+    launchButton.disabled = launchInProgress || ConfigManager.getSelectedServer() == null || !ConfigManager.getSelectedAccount()
+    launchButtonLabel.textContent = Lang.queryJS(runningGames.size ? 'landing.launch.additionalPlay' : 'landing.launch.play')
     for(const button of homeServerList.querySelectorAll('button')){
         button.disabled = launchInProgress
     }
@@ -55,7 +60,15 @@ function setLaunchDetails(details){
 
 function setLaunchPercentage(percent){
     launchProgress.value = Math.round(percent)
+    launchPercent.hidden = false
     launchPercent.textContent = launchProgress.value + '%'
+}
+
+// Installation and process startup have no measurable percentage.
+function setLaunchIndeterminate(){
+    launchProgress.removeAttribute('value')
+    launchPercent.hidden = true
+    remote.getCurrentWindow().setProgressBar(2)
 }
 
 function setDownloadPercentage(percent){
@@ -65,9 +78,10 @@ function setDownloadPercentage(percent){
 
 launchButton.addEventListener('click', async () => {
     if(launchButton.disabled) return
+    const attempt = ++launchAttempt
     const serverId = ConfigManager.getSelectedServer()
     setLaunchDetails(Lang.queryJS('landing.launch.pleaseWait'))
-    setLaunchPercentage(0)
+    setLaunchIndeterminate()
     toggleLaunchArea(true)
 
     try {
@@ -101,10 +115,10 @@ launchButton.addEventListener('click', async () => {
             ConfigManager.save()
         }
         settingsJavaExecVal.value = jExe
-        await dlAsync(serverId)
+        await dlAsync(serverId, attempt)
     } catch(err) {
         loggerLanding.error('Unhandled error during launch.', err)
-        showLaunchFailure(Lang.queryJS('landing.launch.failureTitle'), Lang.queryJS('landing.launch.failureText'))
+        showLaunchFailure(Lang.queryJS('landing.launch.failureTitle'), Lang.queryJS('landing.launch.failureText'), err)
     }
 })
 
@@ -159,6 +173,7 @@ function updateSelectedAccount(authUser){
     }
     document.getElementById('user_text').textContent =
         authUser?.displayName ?? Lang.queryJS('landing.selectedAccount.noAccountSelected')
+    refreshLaunchControls()
 }
 updateSelectedAccount(ConfigManager.getSelectedAccount())
 
@@ -192,8 +207,7 @@ async function selectLauncherServer(id, distro){
     if(launchInProgress) return false
     const server = distro.getServerById(id)
     if(!server) return false
-    await updateSelectedServer(server, distro)
-    return true
+    return await updateSelectedServer(server, distro) !== false
 }
 
 function updateSelectedServer(server, distro){
@@ -201,7 +215,7 @@ function updateSelectedServer(server, distro){
     const changed = ConfigManager.getSelectedServer() !== id
     const inSettings = getCurrentView() === VIEWS.settings
     if(changed){
-        if(inSettings) fullSettingsSave()
+        if(inSettings && !fullSettingsSave()) return false
         ConfigManager.setSelectedServer(id)
         ConfigManager.save()
     }
@@ -286,13 +300,32 @@ setInterval(() => {
     void refreshServerStatus(homeDistribution?.getServerById(ConfigManager.getSelectedServer()))
 }, 5 * 60 * 1000)
 
-function showLaunchFailure(title, desc){
+function showLaunchFailure(title, desc, error){
+    const stage = launchDetailsText.textContent
     toggleLaunchArea(false)
-    setOverlayContent(title, desc, Lang.queryJS('landing.launch.okay'))
-    setOverlayHandler(null)
-    toggleOverlay(true, false, 'overlayContent', getCurrentView() === VIEWS.landing ? launchButton : document.activeElement)
+    document.getElementById('launchFailureTitle').textContent = title
+    document.getElementById('launchFailureDesc').textContent = desc
+    document.getElementById('launchFailureDetails').open = false
+    document.getElementById('launchFailureDiagnostic').textContent = createLaunchDiagnostic({
+        version: remote.app.getVersion(), server: ConfigManager.getSelectedServer(), stage,
+        error, homeDirectory: require('os').homedir()
+    })
+    document.getElementById('launchFailureCopyStatus').textContent = ''
+    document.getElementById('launchFailureRetry').hidden = launchButton.disabled || !ConfigManager.getSelectedAccount()
+    toggleOverlay(true, true, 'launchFailureContent', getCurrentView() === VIEWS.landing ? launchButton : document.activeElement)
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('launchFailureClose').onclick = () => toggleOverlay(false)
+    document.getElementById('launchFailureRetry').onclick = () => {
+        toggleOverlay(false)
+        launchButton.click()
+    }
+    document.getElementById('launchFailureCopy').onclick = () => {
+        launchClipboard.writeText(document.getElementById('launchFailureDiagnostic').textContent)
+        document.getElementById('launchFailureCopyStatus').textContent = Lang.queryJS('landing.launch.diagnosticCopied')
+    }
+}, { once: true })
 
 // Discord presence follows the selected server until a game starts.
 let hasRPC = false
@@ -300,7 +333,7 @@ let discordPresenceMode = null
 let discordPresenceServerId = null
 
 function syncLauncherDiscordPresence(distro, serv){
-    if(proc != null) return
+    if(runningGames.size) return
 
     const genSettings = distro?.rawDistribution.discord
     const servSettings = serv?.rawServer.discord
@@ -325,7 +358,29 @@ const SERVER_CONNECTING_REGEX = /ConnectScreen\/\]: Connecting to /
 const GAME_LAUNCH_REGEX = /^\[.+\]: (?:MinecraftForge .+ Initialized|ModLauncher .+ starting: .+|Loading Minecraft .+ with Fabric Loader .+)$/
 const MIN_LINGER = 5000
 
-async function dlAsync(serverId) {
+// Only the most recently started game controls the single Discord activity.
+function syncGameDiscordPresence(){
+    const game = Array.from(runningGames.values()).at(-1)
+    if(!game){
+        syncLauncherDiscordPresence(homeDistribution, homeDistribution?.getServerById(ConfigManager.getSelectedServer()))
+        return
+    }
+    const general = game.distro.rawDistribution.discord
+    const server = game.serv.rawServer.discord
+    if(!general || !server){
+        if(hasRPC) DiscordWrapper.shutdownRPC()
+        hasRPC = false
+        discordPresenceMode = null
+        discordPresenceServerId = null
+        return
+    }
+    DiscordWrapper.initRPC(general, server, game.details)
+    hasRPC = true
+    discordPresenceMode = 'game'
+    discordPresenceServerId = game.serv.rawServer.id
+}
+
+async function dlAsync(serverId, attempt) {
     const loggerLaunchSuite = LoggerUtil.getLogger('LaunchSuite')
 
     setLaunchDetails(Lang.queryJS('landing.dlAsync.loadingServerInfo'))
@@ -337,7 +392,7 @@ async function dlAsync(serverId) {
         onDistroRefresh(distro)
     } catch(err) {
         loggerLaunchSuite.error('Unable to refresh distribution index.', err)
-        showLaunchFailure(Lang.queryJS('landing.dlAsync.fatalError'), Lang.queryJS('landing.dlAsync.unableToLoadDistributionIndex'))
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.fatalError'), Lang.queryJS('landing.dlAsync.unableToLoadDistributionIndex'), err)
         return
     }
 
@@ -385,7 +440,7 @@ async function dlAsync(serverId) {
     } catch (err) {
         loggerLaunchSuite.error('Unable to prepare game files.', err)
         const retry = Lang.queryJS('landing.dlAsync.retryFilePreparation')
-        showLaunchFailure(Lang.queryJS(failureKey), err.displayable ? `${retry}<br><br>${err.displayable}` : retry)
+        showLaunchFailure(Lang.queryJS(failureKey), retry, err)
         return
     } finally {
         if(receiver.connected) fullRepairModule.destroyReceiver()
@@ -393,13 +448,14 @@ async function dlAsync(serverId) {
     }
 
     setLaunchDetails(Lang.queryJS('landing.dlAsync.preparingToLaunch'))
+    setLaunchIndeterminate()
 
     try {
         setLaunchDetails(Lang.queryJS('landing.dlAsync.installingNeoForge'))
         await NeoForgeInstaller.ensureInstalled(serv)
     } catch(err) {
         loggerLaunchSuite.error('Failed to install the NeoForge client patch.', err)
-        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), err.message)
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.launch.failureText'), err)
         return
     }
 
@@ -421,8 +477,14 @@ async function dlAsync(serverId) {
 
     let launchResetTimer = null
     let launchAreaReset = false
+    let proc
+    const game = { distro, serv, details: Lang.queryJS('landing.discord.loading') }
+    const updateGamePresence = details => {
+        game.details = details
+        if(Array.from(runningGames.keys()).at(-1) === proc && hasRPC) DiscordWrapper.updateDetails(details)
+    }
     const onLoadComplete = () => {
-        if(launchAreaReset || proc == null){
+        if(launchAreaReset || !runningGames.has(proc)){
             return
         }
         launchAreaReset = true
@@ -430,11 +492,8 @@ async function dlAsync(serverId) {
             clearTimeout(launchResetTimer)
             launchResetTimer = null
         }
-        toggleLaunchArea(false)
-        if(hasRPC){
-            DiscordWrapper.updateDetails(Lang.queryJS('landing.discord.loading'))
-            proc.stdout.on('data', gameStateChange)
-        }
+        if(attempt === launchAttempt) toggleLaunchArea(false)
+        proc.stdout.on('data', gameStateChange)
         proc.stdout.removeListener('data', tempListener)
         proc.stderr.removeListener('data', gameErrorListener)
     }
@@ -462,9 +521,9 @@ async function dlAsync(serverId) {
     const gameStateChange = function(data){
         data = data.trim()
         if(SERVER_CONNECTING_REGEX.test(data)){
-            DiscordWrapper.updateDetails(Lang.queryJS('landing.discord.joining'))
+            updateGamePresence(Lang.queryJS('landing.discord.joining'))
         } else if(GAME_READY_REGEX.test(data)){
-            DiscordWrapper.updateDetails(Lang.queryJS('landing.discord.joined'))
+            updateGamePresence(Lang.queryJS('landing.discord.joined'))
         }
     }
 
@@ -472,41 +531,50 @@ async function dlAsync(serverId) {
         data = data.trim()
         if(data.indexOf('Could not find or load main class net.minecraft.launchwrapper.Launch') > -1){
             loggerLaunchSuite.error('Game launch failed, LaunchWrapper was not downloaded properly.')
-            showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.launchWrapperNotDownloaded'))
+            if(!launchAreaReset && attempt === launchAttempt){
+                launchAreaReset = true
+                if(launchResetTimer != null) clearTimeout(launchResetTimer)
+                showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.launchWrapperNotDownloaded'))
+            }
         }
     }
 
     try {
         // Build Minecraft process.
         proc = pb.build()
+        runningGames.set(proc, game)
 
         // Bind listeners to stdout.
         proc.stdout.on('data', tempListener)
         proc.stderr.on('data', gameErrorListener)
 
-        setLaunchDetails(Lang.queryJS('landing.dlAsync.doneEnjoyServer'))
+        setLaunchDetails(Lang.queryJS('landing.dlAsync.launchingGame'))
         launchResetTimer = setTimeout(onLoadComplete, MIN_LINGER)
 
         proc.once('close', () => {
             if(launchResetTimer != null) clearTimeout(launchResetTimer)
-            proc = null
-            if(!launchAreaReset) toggleLaunchArea(false)
+            runningGames.delete(proc)
+            if(!launchAreaReset && attempt === launchAttempt) toggleLaunchArea(false)
             else refreshLaunchControls()
-            syncLauncherDiscordPresence(homeDistribution, homeDistribution.getServerById(ConfigManager.getSelectedServer()))
+            syncGameDiscordPresence()
         })
 
-        // Init Discord Hook
-        if(distro.rawDistribution.discord != null && serv.rawServer.discord != null){
-            DiscordWrapper.initRPC(distro.rawDistribution.discord, serv.rawServer.discord)
-            hasRPC = true
-            discordPresenceMode = 'game'
-            discordPresenceServerId = serv.rawServer.id
-        }
+        proc.once('error', err => {
+            loggerLaunchSuite.error('Unable to start the game process.', err)
+            runningGames.delete(proc)
+            if(launchResetTimer != null) clearTimeout(launchResetTimer)
+            if(!launchAreaReset && attempt === launchAttempt){
+                launchAreaReset = true
+                showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.launch.failureText'), err)
+            }
+            syncGameDiscordPresence()
+        })
+        syncGameDiscordPresence()
 
     } catch(err) {
 
         loggerLaunchSuite.error('Error during launch', err)
-        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.dlAsync.checkConsoleForDetails'))
+        showLaunchFailure(Lang.queryJS('landing.dlAsync.errorDuringLaunchTitle'), Lang.queryJS('landing.launch.failureText'), err)
 
     }
 }

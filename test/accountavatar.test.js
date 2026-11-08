@@ -64,7 +64,8 @@ test('Late avatar responses cannot replace a newly selected account', async () =
     const context = vm.createContext({
         document: { getElementById: id => id === 'avatarContainer' ? avatar : username },
         AccountAvatar: { getHeadUrl: id => new Promise(resolve => responses.set(id, resolve)) },
-        Lang: { queryJS: () => 'No account' }
+        Lang: { queryJS: () => 'No account' },
+        refreshLaunchControls: () => {}
     })
     const source = fs.readFileSync(path.join(__dirname, '../app/assets/js/scripts/landing.js'), 'utf8')
     vm.runInContext(source.slice(source.indexOf('function updateSelectedAccount('), source.indexOf('updateSelectedAccount(ConfigManager')), context)

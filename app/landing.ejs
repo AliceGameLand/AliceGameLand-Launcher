@@ -7,11 +7,13 @@
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 6V4h5l2 2h8v10h-15Z"/></svg>
                 <span><%= lang('landing.openGameFolder') %></span>
             </button>
-            <a id="reportIssueLink" class="rail-tool" href="<%= lang('settings.supportLink') %>" aria-label="<%= lang('landing.reportIssue') %>" title="<%= lang('landing.reportIssueHint') %>">
+            <div class="rail-report-row">
+                <a id="reportIssueLink" class="rail-tool" href="<%= lang('settings.supportLink') %>" aria-label="<%= lang('landing.reportIssue') %>" title="<%= lang('landing.reportIssueHint') %>">
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 15H2.5V3.5h15V15h-8L5 18v-3Z"/><path d="M10 6v4m0 2.5v.2"/></svg>
                 <span><%= lang('landing.reportIssue') %></span>
-            </a>
-            <p class="rail-version"><span class="rail-version-label"><%= lang('landing.launcherVersion') %> </span><span id="homeLauncherVersion"></span></p>
+                </a>
+                <span id="homeLauncherVersion" title="<%= lang('landing.launcherVersion') %>"></span>
+            </div>
         </footer>
     </nav>
     <main class="home-stage">
@@ -22,14 +24,16 @@
             <div class="home-summary">
                 <div class="home-server-copy">
                     <h1 id="homeServerName"><%= lang('landing.loadingServer') %></h1>
-                    <p id="homeServerMeta" class="home-server-meta" hidden></p>
-                    <p id="homeServerStatus" class="home-server-status" aria-live="polite" hidden></p>
+                    <div class="home-server-facts">
+                        <p id="homeServerMeta" class="home-server-meta" hidden></p>
+                        <p id="homeServerStatus" class="home-server-status" aria-live="polite" hidden></p>
+                    </div>
                 </div>
                 <div class="home-action">
                     <div id="launch_content">
                         <button id="launch_button" class="primary-button" type="button" disabled>
                             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5 16 10 6 16.5z" fill="currentColor"/></svg>
-                            <%= lang('landing.launchButton') %>
+                            <span id="launch_button_label"><%= lang('landing.launchButton') %></span>
                         </button>
                     </div>
                     <div id="launch_details" hidden>
@@ -38,6 +42,7 @@
                             <span id="launch_progress_label" aria-hidden="true">0%</span>
                         </div>
                         <progress id="launch_progress" value="0" max="100" aria-labelledby="launch_details_text"></progress>
+                        <div class="launch-pending-track" aria-hidden="true"></div>
                     </div>
                 </div>
             </div>

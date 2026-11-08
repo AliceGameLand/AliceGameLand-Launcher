@@ -27,8 +27,9 @@ function toggleOverlay(state = !isOverlayVisible(), dismissable = false, content
         overlayMain.inert = true
         frameActions.inert = true
         overlayContainer.style.display = 'grid'
-        const initial = overlayDialog.querySelector('[aria-pressed="true"], .overlayKeybindEnter:enabled')
-        const focusTarget = initial ?? overlayDialog
+        const initial = Array.from(overlayDialog.querySelectorAll('[aria-pressed="true"], .overlayKeybindEnter:enabled'))
+            .find(control => control.getClientRects().length)
+        const focusTarget = initial ?? overlayDialog.querySelector('.overlayKeybindEsc') ?? overlayDialog
         focusTarget.focus()
     } else {
         overlayDialog = null
@@ -47,7 +48,7 @@ document.addEventListener('keydown', event => {
         event.stopImmediatePropagation()
         if(overlayDismissable) overlayDialog.querySelector('.overlayKeybindEsc')?.click()
     } else if(event.key === 'Tab'){
-        const controls = Array.from(overlayDialog.querySelectorAll('button:enabled, a[href]'))
+        const controls = Array.from(overlayDialog.querySelectorAll('button:enabled, a[href], summary'))
             .filter(control => control.getClientRects().length)
         const index = controls.indexOf(document.activeElement)
         if(index === -1 || (event.shiftKey ? index === 0 : index === controls.length - 1)){

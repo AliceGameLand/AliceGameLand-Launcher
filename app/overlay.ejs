@@ -37,5 +37,20 @@
             </div>
         </div>
     </div>
+    <div id="launchFailureContent" role="dialog" aria-modal="true" aria-labelledby="launchFailureTitle" aria-describedby="launchFailureDesc" tabindex="-1" style="display: none;">
+        <h2 id="launchFailureTitle"></h2>
+        <p id="launchFailureDesc"></p>
+        <details id="launchFailureDetails">
+            <summary><%= lang('overlay.launchFailureDetails') %></summary>
+            <pre id="launchFailureDiagnostic"></pre>
+            <button id="launchFailureCopy" type="button"><%= lang('overlay.launchFailureCopy') %></button>
+            <span id="launchFailureCopyStatus" role="status"></span>
+        </details>
+        <div class="launch-failure-actions">
+            <a id="launchFailureReport" href="<%= lang('settings.supportLink') %>"><%= lang('landing.reportIssue') %></a>
+            <button id="launchFailureClose" type="button" class="overlayKeybindEsc"><%= lang('overlay.launchFailureClose') %></button>
+            <button id="launchFailureRetry" type="button" class="primary-button overlayKeybindEnter"><%= lang('overlay.launchFailureRetry') %></button>
+        </div>
+    </div>
     <script src="./assets/js/scripts/overlay.js"></script>
 </div>
