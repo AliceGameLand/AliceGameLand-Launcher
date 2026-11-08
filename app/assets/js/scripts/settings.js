@@ -65,14 +65,7 @@ function initSettingsValidators(){
             if(v.tagName === 'INPUT'){
                 if(v.type === 'number' || v.type === 'text'){
                     const validate = () => {
-                        const valid = vFn(v.value) && v.validity.valid
-                        v.toggleAttribute('error', !valid)
-                        v.setAttribute('aria-invalid', String(!valid))
-                        if(valid) settingsState.invalid.delete(v.id)
-                        else settingsState.invalid.add(v.id)
-                        settingsSaveDisabled(settingsState.invalid.size > 0)
-                        document.getElementById('settingsResolutionError').hidden =
-                            !['settingsGameWidth', 'settingsGameHeight'].some(id => settingsState.invalid.has(id))
+                        validateSettingsInputs()
                     }
                     v.addEventListener('input', validate)
                     v.addEventListener('change', validate)
@@ -267,9 +260,41 @@ const settingsNavDone = document.getElementById('settingsNavDone')
  */
 function settingsSaveDisabled(v){
     settingsNavDone.disabled = v
+    document.getElementById('settingsValidationHint').hidden = !v
 }
 
+// Server switching and the save button must enforce the same validation.
+function validateSettingsInputs(){
+    settingsState.invalid.clear()
+    for(const input of document.querySelectorAll('#settingsContainer input[cValue]')){
+        const validator = ConfigManager['validate' + input.getAttribute('cValue')]
+        if(typeof validator !== 'function' || !['number', 'text'].includes(input.type)) continue
+        const valid = validator(input.value) && input.validity.valid
+        input.toggleAttribute('error', !valid)
+        input.setAttribute('aria-invalid', String(!valid))
+        if(!valid) settingsState.invalid.add(input.id)
+    }
+    settingsSaveDisabled(settingsState.invalid.size > 0)
+    document.getElementById('settingsResolutionError').hidden =
+        !['settingsGameWidth', 'settingsGameHeight'].some(id => settingsState.invalid.has(id))
+    return settingsState.invalid.size === 0
+}
+
+function focusInvalidSettingsField(){
+    const input = document.getElementById(settingsState.invalid.values().next().value)
+    if(!input) return
+    if(isOverlayVisible()) toggleOverlay(false)
+    settingsNavItemListener(document.querySelector(`[rSc="${input.closest('.settingsTab').id}"]`), false)
+    input.scrollIntoView({ block: 'center' })
+    input.focus()
+}
+document.getElementById('settingsValidationHint').onclick = focusInvalidSettingsField
+
 function fullSettingsSave() {
+    if(!validateSettingsInputs()){
+        focusInvalidSettingsField()
+        return false
+    }
     saveSettingsValues()
     if(ConfigManager.getSelectedServer() != null){
         saveModConfiguration()
@@ -277,11 +302,12 @@ function fullSettingsSave() {
         saveShaderpackSettings()
     }
     ConfigManager.save()
+    return true
 }
 
 /* Closes the settings view and saves all data. */
 settingsNavDone.onclick = () => {
-    fullSettingsSave()
+    if(!fullSettingsSave()) return
     switchView(getCurrentView(), VIEWS.landing, 160, 160, undefined, () => {
         document.getElementById('settingsMediaButton').focus()
     })
@@ -293,6 +319,17 @@ settingsNavDone.onclick = () => {
 
 const msftLoginLogger = LoggerUtil.getLogger('Microsoft Login')
 const msftLogoutLogger = LoggerUtil.getLogger('Microsoft Logout')
+
+function showMicrosoftLoginFailure(successView, title, description){
+    const destination = successView === VIEWS.settings ? VIEWS.settings : VIEWS.loginOptions
+    switchView(getCurrentView(), destination, 160, 160, () => {
+        setOverlayContent(title, description, Lang.queryJS('settings.msftLogin.okButton'))
+        setOverlayHandler(null)
+        toggleOverlay(true, false, 'overlayContent', document.getElementById(
+            destination === VIEWS.settings ? 'settingsAddMicrosoftAccount' : 'loginOptionMicrosoft'
+        ))
+    })
+}
 
 // Bind the add microsoft account button.
 document.getElementById('settingsAddMicrosoftAccount').onclick = (e) => {
@@ -306,7 +343,6 @@ ipcRenderer.on(MSFT_OPCODE.REPLY_LOGIN, (_, ...arguments_) => {
     if (arguments_[0] === MSFT_REPLY_TYPE.ERROR) {
 
         const viewOnClose = arguments_[2]
-        console.log(arguments_)
         switchView(getCurrentView(), viewOnClose, 500, 500, () => {
 
             if(arguments_[1] === MSFT_ERROR.NOT_FINISHED) {
@@ -332,26 +368,12 @@ ipcRenderer.on(MSFT_OPCODE.REPLY_LOGIN, (_, ...arguments_) => {
 
         // Error from request to Microsoft.
         if (Object.prototype.hasOwnProperty.call(queryMap, 'error')) {
-            switchView(getCurrentView(), viewOnClose, 500, 500, () => {
-                // TODO Dont know what these errors are. Just show them I guess.
-                // This is probably if you messed up the app registration with Azure.      
-                let error = queryMap.error // Error might be 'access_denied' ?
-                let errorDesc = queryMap.error_description
-                console.log('Error getting authCode, is Azure application registered correctly?')
-                console.log(error)
-                console.log(errorDesc)
-                console.log('Full query map: ', queryMap)
-                setOverlayContent(
-                    error,
-                    errorDesc,
-                    Lang.queryJS('settings.msftLogin.okButton')
-                )
-                setOverlayHandler(() => {
-                    toggleOverlay(false)
-                })
-                toggleOverlay(true)
-
-            })
+            const denied = queryMap.error === 'access_denied'
+            showMicrosoftLoginFailure(
+                viewOnClose,
+                Lang.queryJS('settings.msftLogin.' + (denied ? 'deniedTitle' : 'errorTitle')),
+                Lang.queryJS('settings.msftLogin.' + (denied ? 'deniedMessage' : 'errorMessage'))
+            )
         } else {
 
             msftLoginLogger.info('Acquired authCode, proceeding with authentication.')
@@ -378,13 +400,7 @@ ipcRenderer.on(MSFT_OPCODE.REPLY_LOGIN, (_, ...arguments_) => {
                         }
                     }
 
-                    switchView(getCurrentView(), viewOnClose, 500, 500, () => {
-                        setOverlayContent(actualDisplayableError.title, actualDisplayableError.desc, Lang.queryJS('settings.msftLogin.okButton'))
-                        setOverlayHandler(() => {
-                            toggleOverlay(false)
-                        })
-                        toggleOverlay(true)
-                    })
+                    showMicrosoftLoginFailure(viewOnClose, actualDisplayableError.title, actualDisplayableError.desc)
                 })
         }
     }
@@ -1481,6 +1497,7 @@ async function prepareSettings(first = false) {
         await prepareModsTab()
     }
     await initSettingsValues()
+    validateSettingsInputs()
     prepareAccountsTab()
     if(hasServer) await prepareJavaTab()
     prepareAboutTab()
