@@ -14,4 +14,18 @@ const api = new DistributionAPI(
     process.env.ALICE_LOCAL_DISTRIBUTION === '1'
 )
 
+// Keep cached and older remote manifests readable during the display-name change.
+for(const method of ['getDistribution', 'refreshDistributionOrFallback']){
+    const load = api[method].bind(api)
+    api[method] = async (...args) => {
+        const distribution = await load(...args)
+        for(const server of distribution?.servers ?? []){
+            if(server.rawServer.id === 'AliceDiamond-26.2' && server.rawServer.name === '버컴퍼니 다이아몬드 대결'){
+                server.rawServer.name = '버컴퍼니 다이아 대결'
+            }
+        }
+        return distribution
+    }
+}
+
 exports.DistroAPI = api
