@@ -27,7 +27,7 @@ async function fixture(t, options = {}){
     app.whenReady = () => Promise.resolve()
     app.quit = () => {}
     const execute = () => {}
-    execute[promisify.custom] = async () => ({ stdout: options.running ? '"????.exe","1234","Console","1","30,000 K"' : 'INFO: No tasks are running' })
+    execute[promisify.custom] = async command => ({ stdout: command === 'powershell.exe' ? JSON.stringify(options.existing ? [{ icon:'D:\\기존 런처\\앨리스의 게임랜드.exe,0', mode:'user' }] : []) : options.running ? '"????.exe","1234","Console","1","30,000 K"' : 'INFO: No tasks are running' })
     const electron = { app, BrowserWindow: Window, ipcMain: { handle: (name, fn) => handlers.set(name, fn), on: (name, fn) => handlers.set(name, fn) }, screen: { getPrimaryDisplay: () => ({ workAreaSize: { width:1280, height:720 } }) }, dialog: {}, shell: { openPath: async () => '' } }
     const childProcess = {
         execFile: execute,
@@ -46,12 +46,23 @@ async function fixture(t, options = {}){
         }
     }
     const manifest = { version:'1.0.19', executable:'QA-Launcher.exe', sha256:options.badHash ? 'invalid' : createHash('sha256').update(bytes).digest('hex') }
-    const req = name => name === 'electron' ? electron : name === './payload.json' ? manifest : name === './update-target.cjs' ? require('../installer/update-target.cjs') : name === './paths.cjs' ? require('../installer/paths.cjs') : name === 'node:child_process' ? childProcess : require(name)
+    const runtimeFs = { ...fs, existsSync: file => options.existing && file === 'D:\\기존 런처\\앨리스의 게임랜드.exe' ? true : fs.existsSync(file) }
+    const req = name => name === 'node:fs' ? runtimeFs : name === 'electron' ? electron : name === './payload.json' ? manifest : name === './update-target.cjs' ? require('../installer/update-target.cjs') : name === './paths.cjs' ? require('../installer/paths.cjs') : name === 'node:child_process' ? childProcess : require(name)
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../installer/main.cjs'), 'utf8'), { require:req, __dirname:path.join(__dirname,'../installer'), process:{ env:process.env, resourcesPath:directory }, console })
-    await Promise.resolve()
+    await new Promise(resolve => setImmediate(resolve))
     const invoke = (name, value) => handlers.get('setup:' + name)({ sender:window.webContents }, value)
     return { invoke, handlers, get window(){ return window }, reports, destination:path.join(directory, '게임 폴더'), get spawned(){ return spawned } }
 }
+test('Manual reinstall detects the existing location and selects shortcut-preserving update mode', async t => {
+    const f = await fixture(t, { existing:true })
+    const info = f.invoke('info')
+    assert.equal(info.updateTarget.destination, 'D:\\기존 런처')
+    assert.equal(info.updateTarget.mode, 'user')
+    const { installerArguments } = require('../installer/paths.cjs')
+    assert(installerArguments(info.updateTarget.destination, info.updateTarget.mode, true).includes('--updated'))
+    assert.equal(f.spawned, null)
+})
+
 test('custom setup uses a sandboxed frameless window and rejects foreign IPC', async t => {
     const f = await fixture(t)
     assert.equal(f.window.config.frame, false)

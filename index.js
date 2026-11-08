@@ -114,6 +114,7 @@ ipcMain.handle(SHELL_OPCODE.TRASH_ITEM, async (event, ...args) => {
     }
 })
 
+if(process.platform === 'win32') app.setAppUserModelId('kr.dreamcraft.alicegameland.launcher')
 // Disable hardware acceleration.
 // https://electronjs.org/docs/tutorial/offscreen-rendering
 app.disableHardwareAcceleration()

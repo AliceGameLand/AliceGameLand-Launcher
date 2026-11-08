@@ -10,6 +10,6 @@ function validateDestination(value, append = true){
     return result.replace(/\\$/, '')
 }
 function installerArguments(destination, mode, existing = false){
-    return ['/S', mode === 'all' ? '/allusers' : '/currentuser', `/D=${validateDestination(destination, !existing)}`]
+    return ['/S', ...(existing ? ['--updated'] : []), mode === 'all' ? '/allusers' : '/currentuser', `/D=${validateDestination(destination, !existing)}`]
 }
 module.exports = { validateDestination, installerArguments }

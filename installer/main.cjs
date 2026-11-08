@@ -31,10 +31,8 @@ if(!app.requestSingleInstanceLock()) app.quit()
 else {
     app.on('second-instance', () => { window?.show(); window?.focus() })
     app.whenReady().then(async () => {
-        if(process.argv?.includes('--updated')){
-            try { updateTarget = await findUpdateTarget(execute, fs.existsSync) }
-            catch(error){ updateError = error.message }
-        }
+        try { updateTarget = await findUpdateTarget(execute, fs.existsSync) }
+        catch(error){ if(process.argv?.includes('--updated')) updateError = error.message }
         const area = screen.getPrimaryDisplay().workAreaSize
         window = new BrowserWindow({
             width: Math.min(720, area.width - 24), height: Math.min(520, area.height - 24),
