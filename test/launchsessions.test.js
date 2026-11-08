@@ -22,6 +22,7 @@ function createHarness(){
     }
     const context = vm.createContext({
         runningGames: new Map(), launchAttempt: 1,
+        require: { resolve: () => 'fixture-cache-module' },
         LoggerUtil: { getLogger: () => ({ info(){}, error(){} }) },
         Lang: { queryJS: key => key },
         ConfigManager: {
@@ -100,7 +101,7 @@ test('Running games allow another launch while preparation and missing accounts 
     vm.runInContext(source.slice(source.indexOf('function refreshLaunchControls('), source.indexOf('function toggleLaunchArea(')), context)
     vm.runInContext('refreshLaunchControls()', context)
     assert.equal(button.disabled, false)
-    assert.equal(label.textContent, 'landing.launch.additionalPlay')
+    assert.equal(label.textContent, 'landing.launch.play')
     context.ConfigManager.isServerSelectionRequired = () => true
     vm.runInContext('refreshLaunchControls()', context)
     assert.equal(button.disabled, true)

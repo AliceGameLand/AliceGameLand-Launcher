@@ -38,7 +38,7 @@ function refreshLaunchControls(){
     openGameFolderButton.disabled = gameFolderOpening || ConfigManager.getSelectedServer() == null
     const needsSelection = ConfigManager.isServerSelectionRequired()
     launchButton.disabled = launchInProgress || needsSelection || ConfigManager.getSelectedServer() == null || !ConfigManager.getSelectedAccount()
-    launchButtonLabel.textContent = Lang.queryJS(runningGames.size ? 'landing.launch.additionalPlay' : 'landing.launch.play')
+    launchButtonLabel.textContent = Lang.queryJS('landing.launch.play')
     for(const button of homeServerList.querySelectorAll('button')){
         button.disabled = launchInProgress
     }
@@ -454,6 +454,7 @@ async function dlAsync(serverId, attempt) {
     )
 
     fullRepairModule.spawnReceiver()
+    fullRepairModule.validationCacheModule = require.resolve('./assets/js/filevalidationcache')
 
     const receiver = fullRepairModule.childProcess
     // The worker's validation and download promises only settle when it sends a reply.
