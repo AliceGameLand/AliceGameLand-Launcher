@@ -11,6 +11,7 @@ const DiscordWrapper    = require('./assets/js/discordwrapper')
 const NeoForgeInstaller = require('./assets/js/neoforgeinstaller')
 const ProcessBuilder    = require('./assets/js/processbuilder')
 const { createLaunchDiagnostic } = require('./assets/js/launchdiagnostic')
+const { DEFAULT_BACKGROUND, getServerBackground } = require('./assets/js/serverart')
 const { clipboard: launchClipboard } = require('electron')
 
 const launchButton      = document.getElementById('launch_button')
@@ -22,6 +23,7 @@ const launchPercent     = document.getElementById('launch_progress_label')
 const launchDetailsText = document.getElementById('launch_details_text')
 const homeServerList    = document.getElementById('homeServerList')
 const homeServerName    = document.getElementById('homeServerName')
+const homeArtwork       = document.querySelector('.home-art')
 const homeServerMeta    = document.getElementById('homeServerMeta')
 const homeServerStatus  = document.getElementById('homeServerStatus')
 const openGameFolderButton = document.getElementById('openGameFolderButton')
@@ -33,6 +35,10 @@ let launchInProgress = false
 let gameFolderOpening = false
 const runningGames = new Map()
 let launchAttempt = 0
+
+homeArtwork.addEventListener('error', () => {
+    if(homeArtwork.getAttribute('src') !== DEFAULT_BACKGROUND) homeArtwork.src = DEFAULT_BACKGROUND
+})
 
 function refreshLaunchControls(){
     openGameFolderButton.disabled = gameFolderOpening || ConfigManager.getSelectedServer() == null
@@ -260,6 +266,10 @@ function updateSelectedServer(server, distro){
         homeDistribution = distro
         renderHomeServerList(distro)
     }
+
+    const background = getServerBackground(id)
+    if(homeArtwork.getAttribute('src') !== background) homeArtwork.src = background
+    homeArtwork.alt = server?.rawServer.name ?? Lang.queryJS('landing.artDescription')
     for(const button of homeServerList.querySelectorAll('button')){
         button.setAttribute('aria-pressed', String(button.dataset.serverId === id && !ConfigManager.isServerSelectionRequired()))
     }

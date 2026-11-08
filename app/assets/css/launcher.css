@@ -294,6 +294,7 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
     max-height: 100%;
     object-fit: cover;
     object-position: center 65%;
+    filter: brightness(0.96) saturate(1.06) contrast(1.02);
 }
 .home-summary {
     flex: none;
