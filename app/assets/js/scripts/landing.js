@@ -24,6 +24,7 @@ const launchDetailsText = document.getElementById('launch_details_text')
 const homeServerList    = document.getElementById('homeServerList')
 const homeServerName    = document.getElementById('homeServerName')
 const homeArtwork       = document.querySelector('.home-art')
+const transitionArtwork = require('./assets/js/artworktransition').createArtworkTransition(homeArtwork)
 const homeServerMeta    = document.getElementById('homeServerMeta')
 const homeServerStatus  = document.getElementById('homeServerStatus')
 const openGameFolderButton = document.getElementById('openGameFolderButton')
@@ -273,15 +274,7 @@ function updateSelectedServer(server, distro){
     }
 
     const background = getServerBackground(id)
-    if(homeArtwork.getAttribute('src') !== background){
-        homeArtwork.src = background
-        homeArtwork.getAnimations().forEach(animation => animation.cancel())
-        if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-            void homeArtwork.decode().then(() => {
-                if(homeArtwork.getAttribute('src') === background) homeArtwork.animate([{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, easing: 'ease-out' })
-            }).catch(() => {})
-        }
-    }
+    void transitionArtwork(background)
     homeArtwork.alt = server?.rawServer.name ?? Lang.queryJS('landing.artDescription')
     for(const button of homeServerList.querySelectorAll('button')){
         button.setAttribute('aria-pressed', String(button.dataset.serverId === id && !ConfigManager.isServerSelectionRequired()))

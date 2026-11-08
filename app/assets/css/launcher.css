@@ -1712,3 +1712,7 @@ input:checked + .toggleSwitchSlider:before {
     #loadingContent, #loadingBar::before { animation: none; }
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* Preserve illustration continuity during server selection. */
+.home-illustration { position: relative; }
+.home-art-outgoing { position: absolute; inset: 0; pointer-events: none; }
