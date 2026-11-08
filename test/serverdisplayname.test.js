@@ -7,6 +7,7 @@ const vm = require('node:vm')
 test('Both cached and refreshed manifests use the shorter name without changing identity or custom names', async () => {
     let name = '버컴퍼니 다이아몬드 대결'
     class DistributionAPI {
+        isDevMode(){ return true }
         async getDistribution(){ return { servers:[{ rawServer:{ id:'AliceDiamond-26.2', name } }] } }
         async refreshDistributionOrFallback(){ return this.getDistribution() }
     }
@@ -22,3 +23,4 @@ test('Both cached and refreshed manifests use the shorter name without changing 
     name = '다음 시즌 이름'
     assert.equal((await exports.DistroAPI.getDistribution()).servers[0].rawServer.name,name)
 })
+

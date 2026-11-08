@@ -8,8 +8,8 @@ test('Production updates never auto download or install on quit and require sepa
     let handler
     let downloads = 0
     let installs = 0
-    const updater = { autoDownload:true, autoInstallOnAppQuit:true, on(){}, downloadUpdate(){ downloads++; return Promise.resolve() }, quitAndInstall(){ installs++ } }
-    const context = vm.createContext({ autoUpdater:updater, isDev:false, process:{ platform:'win32' }, console:{ log(){} }, ipcMain:{ on(_name, fn){ handler = fn } } })
+    const updater = { autoDownload:true, autoInstallOnAppQuit:true, setFeedURL(){}, on(){}, downloadUpdate(){ downloads++; return Promise.resolve() }, quitAndInstall(){ installs++ } }
+    const context = vm.createContext({ require:()=>class {}, autoUpdater:updater, isDev:false, process:{ platform:'win32' }, console:{ log(){} }, ipcMain:{ on(_name, fn){ handler = fn } } })
     const source = fs.readFileSync(path.join(__dirname,'../index.js'),'utf8')
     vm.runInContext(source.slice(source.indexOf('function initAutoUpdater'),source.indexOf('// Redirect distribution index')),context)
     const event = { sender:{ send(){} } }
@@ -25,3 +25,4 @@ test('Production updates never auto download or install on quit and require sepa
     handler(event,'installUpdateNow')
     assert.equal(installs,1)
 })
+

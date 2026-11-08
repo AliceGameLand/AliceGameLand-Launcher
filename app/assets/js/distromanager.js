@@ -29,3 +29,32 @@ for(const method of ['getDistribution', 'refreshDistributionOrFallback']){
 }
 
 exports.DistroAPI = api
+
+// Cached manifests render immediately; remote failures must not hold the startup screen.
+const { getLatestRelease, readAsset } = require('./githubrelease')
+api.pullRemote = async () => {
+    try {
+        const release = await getLatestRelease('AliceGameLand-Distribution')
+        const asset = release.assets.find(asset => asset.name === 'distribution.json')
+        const data = JSON.parse(await readAsset(asset))
+        if(!Array.isArray(data.servers) || !data.servers.length) throw new Error('Invalid server list')
+        return { data }
+    } catch {
+        return { data: null }
+    }
+}
+const cachedLoad = api.getDistribution.bind(api)
+api.getDistribution = async () => {
+    if(!api.isDevMode() && api.rawDistribution == null){
+        try {
+            const fs = require('fs-extra')
+            if(!fs.existsSync(api.distroPath)){
+                fs.ensureDirSync(ConfigManager.getLauncherDirectory())
+                fs.copyFileSync(require('path').join(__dirname, '../distribution.json'), api.distroPath)
+            }
+            await api.getDistributionLocalLoadOnly()
+            void api.refreshDistributionOrFallback().catch(() => {})
+        } catch { /* First install uses the bounded remote request. */ }
+    }
+    return cachedLoad()
+}

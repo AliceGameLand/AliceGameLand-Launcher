@@ -21,6 +21,8 @@ LangLoader.setupLanguage()
 
 // Setup auto updater.
 function initAutoUpdater(event, data) {
+    autoUpdater.setFeedURL({ provider: 'custom', updateProvider: require('./app/assets/js/updateprovider') })
+    autoUpdater.disableDifferentialDownload = true
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = false
 

@@ -196,7 +196,12 @@ function renderHomeServerList(distro){
         icon.width = 36
         icon.height = 36
         const fallbackIcon = 'assets/images/SealCircle.png'
-        icon.src = rawServer.icon || fallbackIcon
+        const bundledIcons = {
+            'AliceDiamond-26.2': 'diamond.png', 'AliceVrMinigames-26.2': 'minigames.png',
+            'BurcomPvP-26.3': 'pvp.png', 'AliceTailTag-26.2': 'tail-tag.png',
+            'AliceGameLand-26.2': 'alice.png', 'AliceCrimeScene-26.2': 'crime-scene.png'
+        }
+        icon.src = bundledIcons[rawServer.id] ? 'assets/images/server-icons/' + bundledIcons[rawServer.id] : rawServer.icon || fallbackIcon
         icon.addEventListener('error', () => { icon.src = fallbackIcon }, { once: true })
 
         const label = document.createElement('span')
@@ -268,7 +273,15 @@ function updateSelectedServer(server, distro){
     }
 
     const background = getServerBackground(id)
-    if(homeArtwork.getAttribute('src') !== background) homeArtwork.src = background
+    if(homeArtwork.getAttribute('src') !== background){
+        homeArtwork.src = background
+        homeArtwork.getAnimations().forEach(animation => animation.cancel())
+        if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+            void homeArtwork.decode().then(() => {
+                if(homeArtwork.getAttribute('src') === background) homeArtwork.animate([{ opacity: 0, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 260, easing: 'ease-out' })
+            }).catch(() => {})
+        }
+    }
     homeArtwork.alt = server?.rawServer.name ?? Lang.queryJS('landing.artDescription')
     for(const button of homeServerList.querySelectorAll('button')){
         button.setAttribute('aria-pressed', String(button.dataset.serverId === id && !ConfigManager.isServerSelectionRequired()))
