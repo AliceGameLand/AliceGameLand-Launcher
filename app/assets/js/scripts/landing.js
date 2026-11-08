@@ -197,12 +197,7 @@ function renderHomeServerList(distro){
         icon.width = 36
         icon.height = 36
         const fallbackIcon = 'assets/images/SealCircle.png'
-        const bundledIcons = {
-            'AliceDiamond-26.2': 'diamond.png', 'AliceVrMinigames-26.2': 'minigames.png',
-            'BurcomPvP-26.3': 'pvp.png', 'AliceTailTag-26.2': 'tail-tag.png',
-            'AliceGameLand-26.2': 'alice.png', 'AliceCrimeScene-26.2': 'crime-scene.png'
-        }
-        icon.src = bundledIcons[rawServer.id] ? 'assets/images/server-icons/' + bundledIcons[rawServer.id] : rawServer.icon || fallbackIcon
+        icon.src = require('./assets/js/servericon').getServerIcon(rawServer)
         icon.addEventListener('error', () => { icon.src = fallbackIcon }, { once: true })
 
         const label = document.createElement('span')

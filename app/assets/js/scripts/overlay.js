@@ -100,7 +100,7 @@ async function toggleServerSelection(state){
         const icon = document.createElement('img')
         icon.className = 'serverListingImg'
         icon.alt = ''
-        icon.src = rawServer.icon || 'assets/images/SealCircle.png'
+        icon.src = require('./assets/js/servericon').getServerIcon(rawServer)
         icon.addEventListener('error', () => { icon.src = 'assets/images/SealCircle.png' }, { once: true })
 
         const details = document.createElement('span')

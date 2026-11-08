@@ -973,7 +973,7 @@ async function loadSelectedServerOnModsTab(){
 
     for(const el of document.getElementsByClassName('settingsSelServContent')) {
         el.innerHTML = `
-            <img class="serverListingImg" src="${serv.rawServer.icon}"/>
+            <img class="serverListingImg" src="${require('./assets/js/servericon').getServerIcon(serv.rawServer)}"/>
             <div class="serverListingDetails">
                 <span class="serverListingName">${serv.rawServer.name}</span>
                 <span class="serverListingDescription">${serv.rawServer.description}</span>
@@ -993,6 +993,9 @@ async function loadSelectedServerOnModsTab(){
                 </div>
             </div>
         `
+        const icon = el.querySelector('.serverListingImg')
+        icon.alt = ''
+        icon.addEventListener('error', () => { icon.src = 'assets/images/SealCircle.png' }, { once: true })
     }
 }
 
