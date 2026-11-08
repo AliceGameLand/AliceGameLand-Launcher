@@ -17,9 +17,9 @@ let fatalStartupError = false
 // Mapping of each view to their container IDs.
 const VIEWS = {
     landing: '#landingContainer',
+    serverSetup: '#serverSetupContainer',
     loginOptions: '#loginOptionsContainer',
     settings: '#settingsContainer',
-    welcome: '#welcomeContainer',
     waiting: '#waitingContainer'
 }
 
@@ -110,6 +110,9 @@ document.addEventListener('click', (event) => {
  * fades in.
  */
 function switchView(current, next, currentFadeTime = 140, nextFadeTime = 200, onCurrentFade = () => {}, onNextFade = () => {}){
+    if(next === VIEWS.landing && ConfigManager.isServerSelectionRequired() && ConfigManager.getSelectedAccount()){
+        next = VIEWS.serverSetup
+    }
     currentView = next
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     document.getElementById('frameHomeActions').hidden = next !== VIEWS.landing
@@ -118,6 +121,9 @@ function switchView(current, next, currentFadeTime = 140, nextFadeTime = 200, on
         $(next).fadeIn(reduced ? 0 : Math.min(nextFadeTime, 220), async () => {
             if(next === VIEWS.landing){
                 document.querySelector('.home-server[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+            }
+            if(next === VIEWS.serverSetup){
+                (document.querySelector('#firstServerList button') ?? document.querySelector('.server-setup')).focus()
             }
             await onNextFade()
         })
@@ -156,9 +162,7 @@ async function showMainUI(data){
         }
 
         let next = VIEWS.landing
-        if(ConfigManager.isFirstLaunch()){
-            next = VIEWS.welcome
-        } else if(!isLoggedIn){
+        if(!isLoggedIn){
             loginOptionsCancelEnabled(false)
             loginOptionsViewOnLoginSuccess = VIEWS.landing
             loginOptionsViewOnLoginCancel = VIEWS.loginOptions
