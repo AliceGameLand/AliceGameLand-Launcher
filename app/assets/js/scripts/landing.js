@@ -36,7 +36,8 @@ let launchAttempt = 0
 
 function refreshLaunchControls(){
     openGameFolderButton.disabled = gameFolderOpening || ConfigManager.getSelectedServer() == null
-    launchButton.disabled = launchInProgress || ConfigManager.getSelectedServer() == null || !ConfigManager.getSelectedAccount()
+    const needsSelection = ConfigManager.isServerSelectionRequired()
+    launchButton.disabled = launchInProgress || needsSelection || ConfigManager.getSelectedServer() == null || !ConfigManager.getSelectedAccount()
     launchButtonLabel.textContent = Lang.queryJS(runningGames.size ? 'landing.launch.additionalPlay' : 'landing.launch.play')
     for(const button of homeServerList.querySelectorAll('button')){
         button.disabled = launchInProgress
@@ -200,6 +201,33 @@ function renderHomeServerList(distro){
         return button
     })
     homeServerList.replaceChildren(...buttons)
+    const setupList = document.getElementById('firstServerList')
+    document.getElementById('firstServerEmpty').hidden = buttons.length > 0
+    setupList.replaceChildren(...buttons.map(button => {
+        const choice = button.cloneNode(true)
+        choice.removeAttribute('aria-pressed')
+        const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+        arrow.setAttribute('viewBox', '0 0 20 20')
+        arrow.setAttribute('aria-hidden', 'true')
+        const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        arrowPath.setAttribute('d', 'm7.5 4.5 5.5 5.5-5.5 5.5')
+        arrow.append(arrowPath)
+        choice.append(arrow)
+        choice.querySelector('img').addEventListener('error', event => {
+            event.target.src = 'assets/images/SealCircle.png'
+        }, { once: true })
+        choice.onclick = async () => {
+            for(const entry of setupList.children) entry.disabled = true
+            try {
+                if(await selectLauncherServer(choice.dataset.serverId, distro)){
+                    switchView(getCurrentView(), VIEWS.landing, 160, 160, undefined, () => launchButton.focus())
+                }
+            } finally {
+                for(const entry of setupList.children) entry.disabled = false
+            }
+        }
+        return choice
+    }))
 }
 
 // Both selectors use the same save path. A launch owns its server until preparation finishes.
@@ -207,7 +235,16 @@ async function selectLauncherServer(id, distro){
     if(launchInProgress) return false
     const server = distro.getServerById(id)
     if(!server) return false
-    return await updateSelectedServer(server, distro) !== false
+    if(await updateSelectedServer(server, distro) === false) return false
+    if(ConfigManager.isServerSelectionRequired()){
+        ConfigManager.setServerSelectionRequired(false)
+        ConfigManager.save()
+        for(const button of homeServerList.querySelectorAll('button')){
+            button.setAttribute('aria-pressed', String(button.dataset.serverId === id))
+        }
+        refreshLaunchControls()
+    }
+    return true
 }
 
 function updateSelectedServer(server, distro){
@@ -224,7 +261,7 @@ function updateSelectedServer(server, distro){
         renderHomeServerList(distro)
     }
     for(const button of homeServerList.querySelectorAll('button')){
-        button.setAttribute('aria-pressed', String(button.dataset.serverId === id))
+        button.setAttribute('aria-pressed', String(button.dataset.serverId === id && !ConfigManager.isServerSelectionRequired()))
     }
 
     homeServerName.textContent = server?.rawServer.name ?? Lang.queryJS('landing.selectedServer.noSelection')

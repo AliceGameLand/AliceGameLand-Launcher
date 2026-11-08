@@ -93,14 +93,18 @@ test('Running games allow another launch while preparation and missing accounts 
         openGameFolderButton: {}, gameFolderOpening: false,
         launchButton: button, launchButtonLabel: label, launchInProgress: false,
         runningGames: new Map([[{}, {}]]), homeDistribution: { servers: [{}] },
-        ConfigManager: { getSelectedServer: () => 'one', getSelectedAccount: () => ({}) },
+        ConfigManager: { getSelectedServer: () => 'one', getSelectedAccount: () => ({}), isServerSelectionRequired: () => false },
         Lang: { queryJS: key => key }, homeServerList: { querySelectorAll: () => [serverButton] },
-        document: { querySelectorAll: () => [pickerButton] }
+        document: { querySelectorAll: () => [pickerButton], getElementById: () => ({}) }
     })
     vm.runInContext(source.slice(source.indexOf('function refreshLaunchControls('), source.indexOf('function toggleLaunchArea(')), context)
     vm.runInContext('refreshLaunchControls()', context)
     assert.equal(button.disabled, false)
     assert.equal(label.textContent, 'landing.launch.additionalPlay')
+    context.ConfigManager.isServerSelectionRequired = () => true
+    vm.runInContext('refreshLaunchControls()', context)
+    assert.equal(button.disabled, true)
+    context.ConfigManager.isServerSelectionRequired = () => false
     context.launchInProgress = true
     vm.runInContext('refreshLaunchControls()', context)
     assert.equal(button.disabled, true)

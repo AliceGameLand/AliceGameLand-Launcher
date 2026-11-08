@@ -96,6 +96,7 @@ const DEFAULT_CONFIG = {
         dismissed: false
     },
     selectedServer: null, // Resolved
+    serverSelectionRequired: false,
     selectedAccount: null,
     authenticationDatabase: {},
     modConfigurations: [],
@@ -130,6 +131,7 @@ exports.load = function(){
         } else {
             doLoad = false
             config = DEFAULT_CONFIG
+            config.serverSelectionRequired = true
             exports.save()
         }
     }
@@ -196,6 +198,14 @@ function validateKeySet(srcObj, destObj){
  */
 exports.isFirstLaunch = function(){
     return firstLaunch
+}
+
+exports.isServerSelectionRequired = function(){
+    return config.serverSelectionRequired === true
+}
+
+exports.setServerSelectionRequired = function(required){
+    config.serverSelectionRequired = required
 }
 
 /**
