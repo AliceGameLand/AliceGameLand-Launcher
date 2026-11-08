@@ -51,7 +51,7 @@ class ProcessBuilder {
             throw new Error('A Microsoft account is required to launch Minecraft.')
         }
         fs.ensureDirSync(this.gameDir)
-        disableTutorial(this.gameDir)
+        disableTutorial(this.gameDir, ConfigManager.getFullscreen())
         this.quarantineUnmanagedMods()
         const tempNativePath = path.join(os.tmpdir(), ConfigManager.getTempNativeFolder(), crypto.pseudoRandomBytes(16).toString('hex'))
         process.throwDeprecation = true
@@ -503,12 +503,6 @@ class ProcessBuilder {
                         // We don't have many 'features' in the index at the moment.
                         // This should be fine for a while.
                         if(rule.features.has_custom_resolution != null && rule.features.has_custom_resolution === true){
-                            if(ConfigManager.getFullscreen()){
-                                args[i].value = [
-                                    '--fullscreen',
-                                    'true'
-                                ]
-                            }
                             checksum++
                         }
                     }
@@ -591,6 +585,8 @@ class ProcessBuilder {
         // Autoconnect
         this._processAutoConnectArg(args)
         
+
+        if(ConfigManager.getFullscreen()) args.push('--fullscreen')
 
         // Forge Specific Arguments
         args = args.concat(this.modManifest.arguments.game)
