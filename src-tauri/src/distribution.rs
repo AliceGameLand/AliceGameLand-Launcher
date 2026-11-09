@@ -31,8 +31,32 @@ pub struct Server {
     pub auto_connect: bool,
     #[serde(default)]
     pub main_server: bool,
+    #[serde(default, skip_serializing)]
+    java_options: JavaRequirements,
     #[serde(skip_serializing)]
     modules: Vec<Module>,
+}
+
+#[derive(Clone, Default, Deserialize)]
+struct JavaRequirements {
+    #[serde(default)]
+    ram: JavaRam,
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+struct JavaRam {
+    minimum: Option<u32>,
+    recommended: Option<u32>,
+}
+
+impl Server {
+    pub fn minimum_heap(&self) -> u32 {
+        self.java_options.ram.minimum.unwrap_or(2048)
+    }
+
+    pub fn recommended_heap(&self) -> u32 {
+        self.java_options.ram.recommended.unwrap_or(4096)
+    }
 }
 
 #[derive(Clone, Deserialize)]

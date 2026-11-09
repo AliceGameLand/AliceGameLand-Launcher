@@ -13,8 +13,8 @@ mod wizard;
 use std::{path::PathBuf, sync::Mutex};
 
 use distribution::{Distribution, Server};
-use preferences::{GameSettings, Preferences};
-use serde::Serialize;
+use preferences::{GameSettings, JavaOptions, Preferences};
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 struct Launcher {
@@ -70,20 +70,117 @@ fn game_settings(launcher: State<'_, Launcher>) -> Result<GameSettings, String> 
     Ok(preferences.game_settings().clone())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JavaSettings {
+    options: JavaOptions,
+    executable: Option<PathBuf>,
+    minimum_mib: u32,
+    recommended_mib: u32,
+    memory: Option<MemoryStatus>,
+}
+
+#[derive(Serialize)]
+struct MemoryStatus {
+    total: u64,
+    available: u64,
+}
+
 #[tauri::command]
-fn save_game_settings(settings: GameSettings, launcher: State<'_, Launcher>) -> Result<(), String> {
+fn java_settings(server_id: String, launcher: State<'_, Launcher>) -> Result<JavaSettings, String> {
+    let server = launcher
+        .servers
+        .iter()
+        .find(|server| server.id == server_id)
+        .ok_or("서버를 찾지 못했어요.")?;
+    let (_, options) = launcher
+        .preferences
+        .lock()
+        .map_err(|_| "런처 설정을 읽지 못했어요.")?
+        .launch_settings(&server_id);
+    let executable = launcher
+        .preferences_path
+        .parent()
+        .and_then(|path| java::cached_executable(&path.join("java")));
+    let memory = sysinfo::System::new().ok().and_then(|mut system| {
+        system.refresh_memory_specifics(sysinfo::MemoryRefreshKind::nothing().with_ram());
+        let total = system.total_memory();
+        (total > 0).then_some(MemoryStatus {
+            total,
+            available: system.available_memory(),
+        })
+    });
+    Ok(JavaSettings {
+        options,
+        executable,
+        minimum_mib: server.minimum_heap(),
+        recommended_mib: server.recommended_heap(),
+        memory,
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JavaSettingsChange {
+    server_id: String,
+    options: JavaOptions,
+}
+
+fn heap_megabytes(value: &str) -> Option<u32> {
+    let (number, unit) = value.split_at_checked(value.len().checked_sub(1)?)?;
+    let quantity: u32 = number.parse().ok()?;
+    match unit {
+        "G" | "g" => quantity.checked_mul(1024),
+        "M" | "m" => Some(quantity),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+fn save_game_settings(
+    settings: GameSettings,
+    java: Option<JavaSettingsChange>,
+    launcher: State<'_, Launcher>,
+) -> Result<(), String> {
     if [settings.res_width, settings.res_height]
         .iter()
         .any(|dimension| !matches!(dimension, Some(1..=65535)))
     {
         return Err("가로와 세로 해상도를 올바르게 입력해 주세요.".into());
     }
+    let java = match java {
+        Some(change) => {
+            if !launcher
+                .servers
+                .iter()
+                .any(|server| server.id == change.server_id)
+            {
+                return Err("서버를 찾지 못했어요.".into());
+            }
+            let min = heap_megabytes(change.options.min_ram.as_deref().unwrap_or("2G"));
+            let max = heap_megabytes(change.options.max_ram.as_deref().unwrap_or("4G"));
+            if !matches!((min, max), (Some(min), Some(max)) if min > 0 && max >= min) {
+                return Err("Java 최소 메모리가 최대 메모리를 넘지 않게 설정해 주세요.".into());
+            }
+            if change
+                .options
+                .jvm_options
+                .iter()
+                .flatten()
+                .any(|arg| arg.is_empty() || arg.contains('\0'))
+            {
+                return Err("Java 실행 옵션을 확인해 주세요.".into());
+            }
+            Some((change.server_id, change.options))
+        }
+        None => None,
+    };
     let mut preferences = launcher
         .preferences
         .lock()
         .map_err(|_| "런처 설정을 읽지 못했어요.")?;
     preferences
-        .update_game_settings(settings, &launcher.preferences_path)
+        .update_game_settings(settings, java, &launcher.preferences_path)
         .map_err(|_| "게임 설정을 저장하지 못했어요.".into())
 }
 
@@ -199,6 +296,7 @@ fn main() {
             select_server,
             play_server,
             game_settings,
+            java_settings,
             save_game_settings,
             open_game_folder,
             auth::microsoft_sign_out,

@@ -68,14 +68,33 @@ impl Preferences {
         &self.settings.game
     }
 
-    pub fn update_game_settings(&mut self, settings: GameSettings, path: &Path) -> io::Result<()> {
+    pub fn update_game_settings(
+        &mut self,
+        settings: GameSettings,
+        java: Option<(String, JavaOptions)>,
+        path: &Path,
+    ) -> io::Result<()> {
         let previous = std::mem::replace(&mut self.settings.game, settings);
+        let previous_java = java.map(|(server_id, options)| {
+            let previous = self.java_config.insert(server_id.clone(), options);
+            (server_id, previous)
+        });
         if let Err(error) = self.save(path) {
             self.settings.game = previous;
+            match previous_java {
+                Some((server_id, Some(options))) => {
+                    self.java_config.insert(server_id, options);
+                }
+                Some((server_id, None)) => {
+                    self.java_config.remove(&server_id);
+                }
+                None => {}
+            }
             return Err(error);
         }
         Ok(())
     }
+
     pub fn load(current: &Path, data_root: &Path) -> io::Result<Self> {
         if let Some(preferences) = read(current)? {
             return Ok(preferences);
@@ -166,5 +185,37 @@ mod tests {
                 .as_deref(),
             Some("new")
         );
+    }
+
+    #[test]
+    fn saves_java_and_game_settings_together() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("settings.json");
+        let mut preferences = Preferences::default();
+        let game = GameSettings {
+            fullscreen: Some(true),
+            ..GameSettings::default()
+        };
+        let java = JavaOptions {
+            min_ram: Some("3072M".into()),
+            max_ram: Some("6G".into()),
+            jvm_options: Some(vec!["-Dexample=one value".into()]),
+        };
+        preferences
+            .update_game_settings(game, Some(("alice".into(), java)), &path)
+            .unwrap();
+
+        let mut reopened = Preferences::load(&path, root.path()).unwrap();
+        let error = reopened.update_game_settings(
+            GameSettings::default(),
+            Some(("alice".into(), JavaOptions::default())),
+            &path.join("not-a-directory"),
+        );
+        assert!(error.is_err());
+        let (game, java) = reopened.launch_settings("alice");
+        assert_eq!(game.fullscreen, Some(true));
+        assert_eq!(java.min_ram.as_deref(), Some("3072M"));
+        assert_eq!(java.max_ram.as_deref(), Some("6G"));
+        assert_eq!(java.jvm_options.unwrap(), ["-Dexample=one value"]);
     }
 }

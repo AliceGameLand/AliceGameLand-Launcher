@@ -34,6 +34,7 @@ for (const name of ['serverart.js', 'servericon.js', 'artworktransition.js']) {
         'const module = { exports: {} }; const exports = module.exports;\n' + code + '\nexport default module.exports;\n')
 }
 await cp(path.join(root, 'tauri-ui', 'launcher.mjs'), path.join(output, 'launcher.mjs'))
+await cp(path.join(root, 'tauri-ui', 'java-settings.mjs'), path.join(output, 'java-settings.mjs'))
 await writeFile(path.join(output, 'index.html'), html)
 
 if (process.platform === 'win32') {

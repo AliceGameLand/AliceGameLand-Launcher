@@ -2,6 +2,7 @@
 import serverArt from './assets/js/serverart.js.mjs'
 import serverIcon from './assets/js/servericon.js.mjs'
 import artworkTransition from './assets/js/artworktransition.js.mjs'
+import { createJavaSettings } from './java-settings.mjs'
 
 const byId = id => document.getElementById(id)
 const { core, window: windowApi } = window.__TAURI__
@@ -17,6 +18,7 @@ const launchDetails = byId('launch_details')
 let needsServerSelection
 let activeServer
 let activeProfile
+const javaSettings = createJavaSettings(document)
 const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
 const gameFields = {
     resWidth: byId('settingsGameWidth'),
@@ -136,7 +138,11 @@ function showSettingsAccount() {
 async function openSettings(id, source) {
     source.disabled = true
     try {
-        const saved = await core.invoke('game_settings')
+        const [saved, java] = await Promise.all([
+            core.invoke('game_settings'),
+            core.invoke('java_settings', { serverId: activeServer.id })
+        ])
+        javaSettings.load(activeServer, java)
         for (const [key, field] of Object.entries(gameFields)) {
             const value = saved[key] ?? gameDefaults[key]
             if (field.type === 'checkbox') field.checked = value
@@ -216,7 +222,7 @@ try {
     accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
     for (const tab of settingsTabs) {
         const id = tab.getAttribute('rSc')
-        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft'].includes(id)
+        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft', 'settingsTabJava'].includes(id)
         tab.addEventListener('click', () => selectSettingsTab(id))
     }
     const changeAccount = byId('settingsAddMicrosoftAccount')
@@ -234,13 +240,14 @@ try {
             button.disabled = false
         }
     })
+    byId('settingsTabJava').querySelector('.settingsSwitchServerButton').addEventListener('click', () => settingsDone.click())
     settingsDone.addEventListener('click', async () => {
         const settings = Object.fromEntries(Object.entries(gameFields).map(([key, field]) => [
             key, field.type === 'checkbox' ? field.checked : field.valueAsNumber
         ]))
         settingsDone.disabled = true
         try {
-            await core.invoke('save_game_settings', { settings })
+            await core.invoke('save_game_settings', { settings, java: javaSettings.change() })
             showView('landingContainer')
             settingsButton.focus()
         } catch (error) {

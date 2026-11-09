@@ -57,6 +57,18 @@ fn runtime_for(os: &str, arch: &str) -> Result<Runtime> {
     })
 }
 
+fn cache_destination(base: &Path) -> PathBuf {
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    base.join(format!("temurin-{VERSION}-{os}-{arch}"))
+}
+
+pub fn cached_executable(base: &Path) -> Option<PathBuf> {
+    let runtime = runtime_for(std::env::consts::OS, std::env::consts::ARCH).ok()?;
+    let path = cache_destination(base).join(runtime.executable);
+    path.is_file().then_some(path)
+}
+
 fn download(runtime: &Runtime, destination: &Path) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
@@ -95,7 +107,7 @@ pub fn prepare(base: &Path) -> Result<PathBuf> {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
     let runtime = runtime_for(os, arch)?;
-    let destination = base.join(format!("temurin-{VERSION}-{os}-{arch}"));
+    let destination = cache_destination(base);
     let executable = destination.join(runtime.executable);
     if executable.is_file() {
         return Ok(executable);

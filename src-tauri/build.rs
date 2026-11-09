@@ -5,6 +5,7 @@ fn main() {
             "select_server",
             "play_server",
             "game_settings",
+            "java_settings",
             "save_game_settings",
             "open_game_folder",
             "microsoft_sign_out",

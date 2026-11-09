@@ -11,6 +11,7 @@
     "allow-select-server",
     "allow-play-server",
     "allow-game-settings",
+    "allow-java-settings",
     "allow-save-game-settings",
     "allow-open-game-folder",
     "allow-microsoft-sign-out",
