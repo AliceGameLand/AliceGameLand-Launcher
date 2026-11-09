@@ -58,11 +58,18 @@ foreach ($mode in $Scope) {
     }
     $userFile = Join-Path $root 'user-settings.txt'
     Set-Content -LiteralPath $userFile -Value 'keep'
+    $installedLauncher = Join-Path $root 'AliceGameLand-Tauri.exe'
+    $expectedPayload = (Get-FileHash -LiteralPath $installedLauncher).Hash
+    Set-Content -LiteralPath $installedLauncher -Value 'previous launcher fixture'
+    Invoke-NsisWorker $installerPath "/S --updated /$mode /D=$root" $fixture
+    $updated = Find-Preview $hive
+    if ((Get-FileHash -LiteralPath $installedLauncher).Hash -ne $expectedPayload -or
+        (Get-Content -LiteralPath $userFile) -ne 'keep' -or
+        $updated.UninstallString -ne $registration.UninstallString) {
+        throw "$mode update did not replace the launcher and preserve the installation state"
+    }
+    Write-Output "$mode in-place update passed ($hive)"
     if ($mode -eq 'currentuser') {
-        Invoke-NsisWorker $installerPath "/S --updated /$mode /D=$root" $fixture
-        if ((Get-Content -LiteralPath $userFile) -ne 'keep' -or !(Find-Preview $hive)) {
-            throw 'Updating the existing installation did not preserve its state'
-        }
         Remove-Item -LiteralPath $userFile
     }
 
