@@ -1,36 +1,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod artifacts;
 mod auth;
+mod distribution;
 mod java;
+mod minecraft;
 mod preferences;
 
 use std::{path::PathBuf, sync::Mutex};
 
+use distribution::{Distribution, Server};
 use preferences::Preferences;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-const DISTRIBUTION: &str = include_str!("../../app/assets/distribution.json");
+static PREPARATION: Mutex<()> = Mutex::new(());
 
 struct Launcher {
     servers: Vec<Server>,
     preferences_path: PathBuf,
     preferences: Mutex<Preferences>,
-}
-
-#[derive(Deserialize)]
-struct Distribution {
-    servers: Vec<Server>,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Server {
-    id: String,
-    name: String,
-    minecraft_version: String,
-    #[serde(default)]
-    main_server: bool,
 }
 
 #[derive(Serialize)]
@@ -71,18 +60,61 @@ fn select_server(server_id: String, launcher: State<'_, Launcher>) -> Result<(),
     Ok(())
 }
 
+#[derive(Serialize)]
+struct Prepared {
+    verified_files: usize,
+    downloaded_files: usize,
+}
+
 #[tauri::command]
-async fn prepare_java(launcher: State<'_, Launcher>) -> Result<PathBuf, String> {
-    let base = launcher
+async fn prepare_server(
+    server_id: String,
+    launcher: State<'_, Launcher>,
+) -> Result<Prepared, String> {
+    if !launcher.servers.iter().any(|server| server.id == server_id) {
+        return Err("Unknown server".into());
+    }
+    let profile = launcher
         .preferences_path
         .parent()
         .ok_or("Launcher profile directory is missing")?
-        .join("java");
-    tauri::async_runtime::spawn_blocking(move || {
-        java::prepare(&base).map_err(|error| error.to_string())
+        .to_path_buf();
+    let root = launcher
+        .preferences
+        .lock()
+        .map_err(|error| error.to_string())?
+        .game_data_dir()
+        .ok_or("Game data directory is missing")?
+        .to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || -> artifacts::Result<_> {
+        let _guard = PREPARATION
+            .try_lock()
+            .map_err(|_| "Server files are already being prepared")?;
+        if !root.is_absolute() {
+            return Err("Game data directory must be absolute".into());
+        }
+        let client = artifacts::client()?;
+        let distribution = Distribution::refresh(&client, &profile.join("distribution.json"))?;
+        let server = distribution
+            .servers
+            .iter()
+            .find(|server| server.id == server_id)
+            .ok_or("Server is no longer in the distribution")?;
+        let files = server.files()?;
+        java::prepare(&profile.join("java"))?;
+        std::fs::create_dir_all(&root)?;
+        let root = root.canonicalize()?;
+        let downloaded = artifacts::ensure_all(&client, &root, &files)?;
+        let vanilla = minecraft::files(&client, &root, &server.minecraft_version)?;
+        let vanilla_downloaded = artifacts::ensure_all(&client, &root, &vanilla)?;
+        Ok(Prepared {
+            verified_files: files.len() + vanilla.len(),
+            downloaded_files: downloaded + vanilla_downloaded,
+        })
     })
     .await
     .map_err(|error| error.to_string())?
+    .map_err(|error| error.to_string())
 }
 
 fn test_profile() -> std::io::Result<Option<PathBuf>> {
@@ -102,13 +134,14 @@ fn test_profile() -> std::io::Result<Option<PathBuf>> {
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            let distribution: Distribution = serde_json::from_str(DISTRIBUTION)?;
             let test_profile = test_profile()?;
             let (profile, data_root) = match test_profile {
                 Some(path) => (path.clone(), path),
                 None => (app.path().app_data_dir()?, app.path().data_dir()?),
             };
             let preferences_path = profile.join("preferences.json");
+            let distribution = Distribution::local(&profile.join("distribution.json"))
+                .map_err(std::io::Error::other)?;
             let preferences = Preferences::load(&preferences_path, &data_root)?;
             app.manage(Launcher {
                 servers: distribution.servers,
@@ -120,7 +153,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             launcher_snapshot,
             select_server,
-            prepare_java,
+            prepare_server,
             auth::account_profile,
             auth::microsoft_sign_in
         ])

@@ -54,6 +54,9 @@ struct JavaOptions {
 }
 
 impl Preferences {
+    pub fn game_data_dir(&self) -> Option<&Path> {
+        self.settings.launcher.data_directory.as_deref()
+    }
     pub fn load(current: &Path, data_root: &Path) -> io::Result<Self> {
         if let Some(preferences) = read(current)? {
             return Ok(preferences);
