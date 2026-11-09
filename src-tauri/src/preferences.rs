@@ -64,6 +64,18 @@ impl Preferences {
         )
     }
 
+    pub fn game_settings(&self) -> &GameSettings {
+        &self.settings.game
+    }
+
+    pub fn update_game_settings(&mut self, settings: GameSettings, path: &Path) -> io::Result<()> {
+        let previous = std::mem::replace(&mut self.settings.game, settings);
+        if let Err(error) = self.save(path) {
+            self.settings.game = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
     pub fn load(current: &Path, data_root: &Path) -> io::Result<Self> {
         if let Some(preferences) = read(current)? {
             return Ok(preferences);

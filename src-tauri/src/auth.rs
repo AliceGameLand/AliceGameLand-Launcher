@@ -329,6 +329,18 @@ pub async fn microsoft_sign_in(app: AppHandle) -> Result<Profile> {
     .await
 }
 
+#[tauri::command]
+pub async fn microsoft_sign_out() -> Result<()> {
+    let _login = LOGIN
+        .try_lock()
+        .map_err(|_| "이미 Microsoft 로그인이 진행 중이에요.")?;
+    tauri::async_runtime::spawn_blocking(|| match credential()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(_) => Err("운영체제의 계정 보관함에서 계정을 삭제하지 못했어요.".into()),
+    })
+    .await
+    .map_err(|_| "로그아웃이 중단됐어요.")?
+}
 pub async fn game_session() -> Result<GameSession> {
     let _login = LOGIN
         .try_lock()

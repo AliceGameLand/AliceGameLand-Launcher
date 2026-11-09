@@ -16,6 +16,16 @@ const playButton = byId('launch_button')
 const launchDetails = byId('launch_details')
 let needsServerSelection
 let activeServer
+let activeProfile
+const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
+const gameFields = {
+    resWidth: byId('settingsGameWidth'),
+    resHeight: byId('settingsGameHeight'),
+    fullscreen: document.querySelector('[cValue=Fullscreen]'),
+    autoConnect: document.querySelector('[cValue=AutoConnect]'),
+    launchDetached: document.querySelector('[cValue=LaunchDetached]')
+}
+const gameDefaults = { resWidth: 1280, resHeight: 720, fullscreen: false, autoConnect: true, launchDetached: true }
 
 for (const [suffix, action] of [['close', 'close'], ['minimize', 'minimize'], ['restoredown', 'toggleMaximize']]) {
     const control = byId('frameButton_' + suffix) ?? byId('frameButtonDarwin_' + suffix)
@@ -27,9 +37,10 @@ for (const area of document.querySelectorAll('.frame-brand, .frame-spacer')) {
 
 function showView(id) {
     byId('main').style.display = 'block'
-    for (const view of ['loginOptionsContainer', 'waitingContainer', 'serverSetupContainer', 'landingContainer']) {
+    for (const view of ['loginOptionsContainer', 'waitingContainer', 'serverSetupContainer', 'landingContainer', 'settingsContainer']) {
         byId(view).style.display = view === id ? 'grid' : 'none'
     }
+    byId('frameHomeActions').hidden = id !== 'landingContainer'
     byId('loadingContainer').hidden = true
     document.body.classList.remove('launcher-starting')
 }
@@ -68,11 +79,79 @@ function setActiveServer(server) {
 }
 
 function showAuthenticated(profile) {
+    activeProfile = profile
     byId('user_text').textContent = profile.name
     showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
     if (needsServerSelection) setupList.firstElementChild?.focus()
 }
 
+function selectSettingsTab(id) {
+    for (const tab of settingsTabs) {
+        const active = tab.getAttribute('rSc') === id
+        tab.toggleAttribute('selected', active)
+        tab.setAttribute('aria-current', String(active))
+    }
+    for (const pane of document.querySelectorAll('.settingsTab')) {
+        pane.style.display = pane.id === id ? '' : 'none'
+    }
+}
+
+function showSettingsAccount() {
+    const container = byId('settingsCurrentMicrosoftAccounts')
+    const row = document.createElement('div')
+    row.className = 'settingsAuthAccount'
+    const body = document.createElement('div')
+    body.className = 'settingsAuthAccountRight'
+    const details = document.createElement('div')
+    details.className = 'settingsAuthAccountDetails'
+    const name = document.createElement('span')
+    name.className = 'settingsAuthAccountDetailValue'
+    name.textContent = activeProfile.name
+    const actions = document.createElement('div')
+    actions.className = 'settingsAuthAccountActions'
+    const signOut = document.createElement('button')
+    signOut.type = 'button'
+    signOut.className = 'settingsAuthAccountLogOut'
+    signOut.textContent = '로그아웃'
+    signOut.addEventListener('click', async () => {
+        signOut.disabled = true
+        try {
+            await core.invoke('microsoft_sign_out')
+            activeProfile = null
+            showView('loginOptionsContainer')
+            loginButton.focus()
+        } catch (error) {
+            showError('로그아웃하지 못했어요', error, signOut)
+        } finally {
+            signOut.disabled = false
+        }
+    })
+    details.append(name)
+    actions.append(signOut)
+    body.append(details, actions)
+    row.append(body)
+    container.replaceChildren(row)
+}
+
+async function openSettings(id, source) {
+    source.disabled = true
+    try {
+        const saved = await core.invoke('game_settings')
+        for (const [key, field] of Object.entries(gameFields)) {
+            const value = saved[key] ?? gameDefaults[key]
+            if (field.type === 'checkbox') field.checked = value
+            else field.value = value
+        }
+        showSettingsAccount()
+        selectSettingsTab(id)
+        showView('settingsContainer')
+        settingsTabs.find(tab => tab.getAttribute('rSc') === id)?.focus()
+    } catch (error) {
+        showError('설정을 열지 못했어요', error, source)
+    } finally {
+        source.disabled = false
+    }
+}
 function makeChoice(server, firstChoice = false) {
     const item = document.createElement('button')
     item.type = 'button'
@@ -130,6 +209,55 @@ try {
     setActiveServer(initial)
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
 
+    const settingsButton = byId('settingsMediaButton')
+    const accountButton = byId('avatarOverlay')
+    const settingsDone = byId('settingsNavDone')
+    settingsButton.addEventListener('click', () => openSettings('settingsTabMinecraft', settingsButton))
+    accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
+    for (const tab of settingsTabs) {
+        const id = tab.getAttribute('rSc')
+        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft'].includes(id)
+        tab.addEventListener('click', () => selectSettingsTab(id))
+    }
+    const changeAccount = byId('settingsAddMicrosoftAccount')
+    changeAccount.textContent = '다른 계정으로 로그인'
+    changeAccount.addEventListener('click', async event => {
+        const button = event.currentTarget
+        button.disabled = true
+        try {
+            activeProfile = await core.invoke('microsoft_sign_in')
+            byId('user_text').textContent = activeProfile.name
+            showSettingsAccount()
+        } catch (error) {
+            showError('Microsoft 로그인', error, button)
+        } finally {
+            button.disabled = false
+        }
+    })
+    settingsDone.addEventListener('click', async () => {
+        const settings = Object.fromEntries(Object.entries(gameFields).map(([key, field]) => [
+            key, field.type === 'checkbox' ? field.checked : field.valueAsNumber
+        ]))
+        settingsDone.disabled = true
+        try {
+            await core.invoke('save_game_settings', { settings })
+            showView('landingContainer')
+            settingsButton.focus()
+        } catch (error) {
+            showError('게임 설정을 저장하지 못했어요', error, settingsDone)
+        } finally {
+            settingsDone.disabled = false
+        }
+    })
+    const openFolder = byId('openGameFolderButton')
+    openFolder.disabled = false
+    openFolder.addEventListener('click', async () => {
+        try {
+            await core.invoke('open_game_folder')
+        } catch (error) {
+            showError('게임 폴더를 열지 못했어요', error, openFolder)
+        }
+    })
     playButton.disabled = false
     playButton.addEventListener('click', async () => {
         const server = activeServer

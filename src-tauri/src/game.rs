@@ -1,10 +1,11 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, HashMap},
     env, fs,
     io::{self, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    sync::{LazyLock, Mutex},
+    process::{Child, Command, Stdio},
+    sync::{Arc, LazyLock, Mutex},
+    time::Duration,
 };
 
 use serde::Deserialize;
@@ -20,19 +21,22 @@ use crate::{
 };
 
 static PREPARATION: Mutex<()> = Mutex::new(());
-static RUNNING: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+type AttachedChild = Arc<Mutex<Child>>;
+static RUNNING: LazyLock<Mutex<HashMap<String, Option<AttachedChild>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 struct RunningGame(String);
 
 impl RunningGame {
     fn reserve(server_id: String) -> Result<Self> {
-        if !RUNNING
+        let mut running = RUNNING
             .lock()
-            .map_err(|_| "실행 중인 게임을 확인하지 못했어요.")?
-            .insert(server_id.clone())
-        {
+            .map_err(|_| "실행 중인 게임을 확인하지 못했어요.")?;
+        let std::collections::hash_map::Entry::Vacant(slot) = running.entry(server_id.clone())
+        else {
             return Err("이 서버의 게임이 이미 실행 중이에요.".into());
-        }
+        };
+        slot.insert(None);
         Ok(Self(server_id))
     }
 }
@@ -45,6 +49,15 @@ impl Drop for RunningGame {
     }
 }
 
+pub fn stop_attached() {
+    let Ok(games) = RUNNING.lock() else { return };
+    for child in games.values().flatten() {
+        if let Ok(mut child) = child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LoaderVersion {
@@ -394,11 +407,32 @@ pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str
         .stderr(Stdio::null())
         .spawn()?;
     let pid = child.id();
-    std::thread::spawn(move || {
-        let _ = child.wait();
-        drop(natives);
-        drop(running);
-    });
+    if launch.settings.launch_detached.unwrap_or(true) {
+        std::thread::spawn(move || {
+            let _ = child.wait();
+            drop(natives);
+            drop(running);
+        });
+    } else {
+        let attached = Arc::new(Mutex::new(child));
+        if let Ok(mut games) = RUNNING.lock() {
+            games.insert(running.0.clone(), Some(Arc::clone(&attached)));
+        }
+        std::thread::spawn(move || {
+            loop {
+                let status = attached
+                    .lock()
+                    .ok()
+                    .and_then(|mut child| child.try_wait().ok());
+                if !matches!(status, Some(None)) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            drop(natives);
+            drop(running);
+        });
+    }
     Ok(pid)
 }
 

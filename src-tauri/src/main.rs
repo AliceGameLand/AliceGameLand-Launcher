@@ -11,7 +11,7 @@ mod preferences;
 use std::{path::PathBuf, sync::Mutex};
 
 use distribution::{Distribution, Server};
-use preferences::Preferences;
+use preferences::{GameSettings, Preferences};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
@@ -59,6 +59,57 @@ fn select_server(server_id: String, launcher: State<'_, Launcher>) -> Result<(),
     Ok(())
 }
 
+#[tauri::command]
+fn game_settings(launcher: State<'_, Launcher>) -> Result<GameSettings, String> {
+    let preferences = launcher
+        .preferences
+        .lock()
+        .map_err(|_| "런처 설정을 읽지 못했어요.")?;
+    Ok(preferences.game_settings().clone())
+}
+
+#[tauri::command]
+fn save_game_settings(settings: GameSettings, launcher: State<'_, Launcher>) -> Result<(), String> {
+    if [settings.res_width, settings.res_height]
+        .iter()
+        .any(|dimension| !matches!(dimension, Some(1..=65535)))
+    {
+        return Err("가로와 세로 해상도를 올바르게 입력해 주세요.".into());
+    }
+    let mut preferences = launcher
+        .preferences
+        .lock()
+        .map_err(|_| "런처 설정을 읽지 못했어요.")?;
+    preferences
+        .update_game_settings(settings, &launcher.preferences_path)
+        .map_err(|_| "게임 설정을 저장하지 못했어요.".into())
+}
+
+#[tauri::command]
+fn open_game_folder(launcher: State<'_, Launcher>) -> Result<(), String> {
+    let path = launcher
+        .preferences
+        .lock()
+        .map_err(|_| "런처 설정을 읽지 못했어요.")?
+        .game_data_dir()
+        .filter(|path| path.is_absolute())
+        .ok_or("게임 데이터 폴더를 찾지 못했어요.")?
+        .to_path_buf();
+    std::fs::create_dir_all(&path).map_err(|_| "게임 데이터 폴더를 만들지 못했어요.")?;
+    let opener = if cfg!(windows) {
+        "explorer.exe"
+    } else {
+        "/usr/bin/open"
+    };
+    let mut process = std::process::Command::new(opener)
+        .arg(path)
+        .spawn()
+        .map_err(|_| "게임 데이터 폴더를 열지 못했어요.")?;
+    std::thread::spawn(move || {
+        let _ = process.wait();
+    });
+    Ok(())
+}
 #[tauri::command]
 async fn play_server(
     server_id: String,
@@ -137,9 +188,18 @@ fn main() {
             launcher_snapshot,
             select_server,
             play_server,
+            game_settings,
+            save_game_settings,
+            open_game_folder,
+            auth::microsoft_sign_out,
             auth::account_profile,
             auth::microsoft_sign_in
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to start AliceGameLand");
+        .build(tauri::generate_context!())
+        .expect("failed to start AliceGameLand")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                game::stop_attached();
+            }
+        });
 }
