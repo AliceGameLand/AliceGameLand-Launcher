@@ -38,3 +38,6 @@ windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Storage_Fil
 
 [target.'cfg(target_os = "macos")'.dependencies]
 rustix = { version = "1", features = ["fs"] }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

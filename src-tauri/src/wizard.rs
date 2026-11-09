@@ -62,11 +62,19 @@ impl Scope {
             Self::All => "/allusers",
         }
     }
+
+    pub(crate) fn update_flag(self) -> &'static str {
+        match self {
+            Self::User => "--alice-update-currentuser",
+            Self::All => "--alice-update-allusers",
+        }
+    }
 }
 
 pub(crate) enum Mode {
     Install {
         backend: PathBuf,
+        update_scope: Option<Scope>,
     },
     Remove {
         backend: PathBuf,
@@ -90,7 +98,18 @@ impl Mode {
         match args.as_slice() {
             [mode, backend] if mode == "--alice-setup" => Ok(Some(Self::Install {
                 backend: checked_backend(backend)?,
+                update_scope: None,
             })),
+            [mode, backend, scope] if mode == "--alice-setup" => {
+                let update_scope = [Scope::User, Scope::All]
+                    .into_iter()
+                    .find(|mode| scope == mode.update_flag())
+                    .ok_or_else(invalid)?;
+                Ok(Some(Self::Install {
+                    backend: checked_backend(backend)?,
+                    update_scope: Some(update_scope),
+                }))
+            }
             [mode, backend, root, scope] if mode == "--alice-remove" => {
                 let root = root.to_str().ok_or_else(invalid)?;
                 let scope = match scope.to_str() {
@@ -172,27 +191,33 @@ fn registered_directory(scope: Scope) -> Option<PathBuf> {
     directory(&String::from_utf16(&value[..end]).ok()?).ok()
 }
 
-fn update_target() -> Option<UpdateTarget> {
-    [Scope::User, Scope::All].into_iter().find_map(|mode| {
-        let destination = registered_directory(mode)?;
-        destination
-            .join(LAUNCHER)
-            .is_file()
-            .then_some(UpdateTarget { destination, mode })
-    })
+fn registered_update_target(mode: Scope) -> Option<UpdateTarget> {
+    let destination = registered_directory(mode)?;
+    destination
+        .join(LAUNCHER)
+        .is_file()
+        .then_some(UpdateTarget { destination, mode })
 }
 
-pub(crate) fn can_update_running_install() -> bool {
-    let Some(target) = update_target() else {
-        return false;
-    };
-    match (
-        env::current_exe().and_then(fs::canonicalize),
-        target.destination.join(LAUNCHER).canonicalize(),
-    ) {
-        (Ok(running), Ok(registered)) => running == registered,
-        _ => false,
+fn update_target(scope: Option<Scope>) -> Option<UpdateTarget> {
+    match scope {
+        Some(scope) => registered_update_target(scope),
+        None => [Scope::User, Scope::All]
+            .into_iter()
+            .find_map(registered_update_target),
     }
+}
+
+pub(crate) fn update_scope_for_running_install() -> Option<Scope> {
+    let running = env::current_exe().and_then(fs::canonicalize).ok()?;
+    let mut matching = [Scope::User, Scope::All].into_iter().filter(|&scope| {
+        registered_update_target(scope)
+            .and_then(|target| target.destination.join(LAUNCHER).canonicalize().ok())
+            .as_ref()
+            == Some(&running)
+    });
+    let scope = matching.next()?;
+    matching.next().is_none().then_some(scope)
 }
 
 #[derive(Serialize)]
@@ -463,9 +488,10 @@ fn install(
     backend: &Path,
     options: Options,
     update: Option<UpdateTarget>,
+    update_scope: Option<Scope>,
     progress: Channel<Progress>,
 ) -> Result<PathBuf, String> {
-    if update != update_target() {
+    if update != update_target(update_scope) || (update_scope.is_some() && update.is_none()) {
         return Err("기존 설치 위치가 바뀌었어요. 설치 파일을 다시 실행해 주세요.".into());
     }
     let updating = update.is_some();
@@ -511,17 +537,23 @@ async fn wizard_install(
     options: Options,
     progress: Channel<Progress>,
 ) -> Result<Outcome, String> {
-    let Mode::Install { backend } = &state.mode else {
+    let Mode::Install {
+        backend,
+        update_scope,
+    } = &state.mode
+    else {
         return Err("이 창에서는 설치할 수 없어요.".into());
     };
     let _operation = Operation::start(&state.busy)?;
     let backend = backend.clone();
     let update = state.update_target.clone();
-    let result =
-        tauri::async_runtime::spawn_blocking(move || install(&backend, options, update, progress))
-            .await
-            .map_err(|_| "설치 작업이 중단됐어요.")?
-            .map(Some);
+    let update_scope = *update_scope;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        install(&backend, options, update, update_scope, progress)
+    })
+    .await
+    .map_err(|_| "설치 작업이 중단됐어요.")?
+    .map(Some);
     if let Ok(installed) = &result {
         *state
             .installed
@@ -611,9 +643,16 @@ pub fn run(context: tauri::Context<tauri::Wry>, mode: Mode) {
             false,
         ),
     };
-    let update_target = matches!(&mode, Mode::Install { .. })
-        .then(update_target)
-        .flatten();
+    let update_target = match &mode {
+        Mode::Install { update_scope, .. } => {
+            let target = update_target(*update_scope);
+            if update_scope.is_some() && target.is_none() {
+                std::process::exit(2);
+            }
+            target
+        }
+        Mode::Remove { .. } => None,
+    };
     let result = tauri::Builder::default()
         .manage(Wizard {
             mode,

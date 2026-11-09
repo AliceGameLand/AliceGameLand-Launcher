@@ -70,8 +70,15 @@ jobs:
         run: |
           $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
           ./scripts/test-tauri-setup.ps1 -Installer $setup.FullName
+          node scripts/test-tauri-update.mjs $setup.FullName
       - if: runner.os == 'macOS'
         run: npm run tauri -- build --ci -- --locked
+      - name: Verify the signed macOS package replaces an installed app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          node scripts/test-tauri-update.mjs "$app"
       - if: runner.os == 'macOS'
         shell: bash
         run: |

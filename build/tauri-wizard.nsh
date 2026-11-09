@@ -56,8 +56,21 @@
       Nsis7z::Extract "$PLUGINSDIR\app-64.7z"
       Pop $0
       Rename "$OUTDIR\${APP_EXECUTABLE_FILENAME}" "$OUTDIR\AliceGameLand-Wizard.exe"
+      StrCpy $R6 ""
+      ${GetParameters} $R0
       ClearErrors
-      ExecWait '"$OUTDIR\AliceGameLand-Wizard.exe" --alice-setup "$EXEPATH"' $0
+      ${GetOptions} $R0 "--alice-update-currentuser" $R1
+      ${IfNot} ${Errors}
+        StrCpy $R6 "--alice-update-currentuser"
+      ${Else}
+        ClearErrors
+        ${GetOptions} $R0 "--alice-update-allusers" $R1
+        ${IfNot} ${Errors}
+          StrCpy $R6 "--alice-update-allusers"
+        ${EndIf}
+      ${EndIf}
+      ClearErrors
+      ExecWait '"$OUTDIR\AliceGameLand-Wizard.exe" --alice-setup "$EXEPATH" $R6' $0
       IfErrors tauriSetupLaunchFailed
       ${If} $0 == 0
         SetOutPath "$TEMP"

@@ -37,7 +37,7 @@ pub fn available() -> bool {
         return false;
     }
     #[cfg(windows)]
-    return crate::wizard::can_update_running_install();
+    return crate::wizard::update_scope_for_running_install().is_some();
     #[cfg(target_os = "macos")]
     return true;
     #[cfg(not(any(windows, target_os = "macos")))]
@@ -94,9 +94,14 @@ async fn check_feed(
         .timeout(Duration::from_secs(15))
         .version_comparator(move |current, remote| is_newer(&current, &remote.version, prerelease))
         .restart_after_install(false)
-        .on_before_exit(game::stop_attached)
-        .build()
-        .map_err(|_| CHECK_FAILED)?;
+        .on_before_exit(game::stop_attached);
+    #[cfg(windows)]
+    let updater = updater.installer_arg(
+        crate::wizard::update_scope_for_running_install()
+            .ok_or(UNAVAILABLE)?
+            .update_flag(),
+    );
+    let updater = updater.build().map_err(|_| CHECK_FAILED)?;
     let update = updater.check().await.map_err(|_| CHECK_FAILED)?;
     if update
         .as_ref()
@@ -280,6 +285,65 @@ mod tests {
             base.replace("AliceGameLand-Launcher", "AliceGameLand-Distribution"),
         ] {
             assert!(!trusted_package(&Url::parse(&bad).unwrap()), "{bad}");
+        }
+    }
+
+    #[test]
+    #[ignore = "uses a disposable signing key and built CI package"]
+    fn signed_update_accepts_only_matching_package_and_version() {
+        use serde::Deserialize;
+        use std::{fs, path::PathBuf};
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Fixture {
+            executable: PathBuf,
+            #[cfg(target_os = "macos")]
+            expected: PathBuf,
+            payload: PathBuf,
+            manifest: serde_json::Value,
+            public_key: String,
+        }
+
+        let root = PathBuf::from(std::env::var_os("ALICE_TAURI_TEST_UPDATE").unwrap());
+        let fixture: Fixture =
+            serde_json::from_slice(&fs::read(root.join("fixture.json")).unwrap()).unwrap();
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        context.config_mut().plugins.0.insert(
+            "updater".into(),
+            serde_json::json!({ "pubkey": fixture.public_key, "requireSignedVersion": true }),
+        );
+        let app = tauri::test::mock_builder()
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .build(context)
+            .unwrap();
+        let updater = app
+            .updater_builder()
+            .executable_path(&fixture.executable)
+            .endpoints(vec![Url::parse(STABLE_FEED).unwrap()])
+            .unwrap()
+            .build()
+            .unwrap();
+        let update = updater
+            .restore_update(fixture.manifest.clone())
+            .unwrap()
+            .unwrap();
+        let mut bytes = fs::read(fixture.payload).unwrap();
+        update.verify(&bytes).unwrap();
+        bytes[0] ^= 1;
+        assert!(update.verify(&bytes).is_err());
+        bytes[0] ^= 1;
+        let mut relabeled = fixture.manifest;
+        relabeled["version"] = serde_json::json!("999.0.0");
+        let wrong_version = updater.restore_update(relabeled).unwrap().unwrap();
+        assert!(wrong_version.verify(&bytes).is_err());
+        #[cfg(target_os = "macos")]
+        {
+            update.install(bytes).unwrap();
+            assert_eq!(
+                fs::read(fixture.executable).unwrap(),
+                fs::read(fixture.expected).unwrap()
+            );
         }
     }
 }
