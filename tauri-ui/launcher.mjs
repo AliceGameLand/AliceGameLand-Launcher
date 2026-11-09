@@ -293,6 +293,96 @@ function bindProjectPage(link, page) {
     })
 }
 
+function bindUpdates({ version, updatesAvailable }) {
+    const panel = byId('settingsTabUpdate')
+    const title = byId('settingsUpdateTitle')
+    const number = byId('settingsUpdateVersionValue')
+    const button = byId('settingsUpdateActionButton')
+    const changelog = panel.querySelector('.settingsChangelogContainer')
+    const notes = changelog.querySelector('.settingsChangelogText')
+    const download = byId('settingsUpdateDownload')
+    const bar = byId('settingsUpdateDownloadBar')
+    const label = byId('settingsUpdateDownloadLabel')
+    const percentage = byId('settingsUpdateDownloadPercent')
+    const size = byId('settingsUpdateDownloadSize')
+    const mib = bytes => (bytes / 1024 ** 2).toFixed(1) + ' MiB'
+    let release
+    let busy = false
+    number.textContent = version
+    changelog.hidden = true
+    title.textContent = updatesAvailable ? '업데이트를 확인할 수 있어요.' : '이 빌드에는 자동 업데이트 채널이 연결되지 않았어요.'
+    button.disabled = !updatesAvailable
+    notes.style.whiteSpace = 'pre-wrap'
+    if (!updatesAvailable) return
+
+    function showRelease() {
+        const current = release?.version ?? version
+        const prerelease = current.split('+')[0].includes('-')
+        number.textContent = current
+        byId('settingsUpdateVersionTitle').textContent = prerelease ? '프리릴리스' : '안정 버전'
+        byId('settingsUpdateVersionTitle').toggleAttribute('data-prerelease', prerelease)
+        byId('settingsUpdateVersionCheck').toggleAttribute('data-prerelease', prerelease)
+        changelog.hidden = !release?.notes
+        notes.textContent = release?.notes ?? ''
+        button.textContent = release ? '업데이트 받기' : '업데이트 확인'
+    }
+
+    async function check() {
+        if (busy) return
+        busy = true
+        button.disabled = true
+        title.textContent = '업데이트 확인 중…'
+        try {
+            release = await core.invoke('check_launcher_update')
+            title.textContent = release ? '새 버전이 있어요.' : '최신 버전을 사용하고 있어요.'
+        } catch (error) {
+            release = null
+            title.textContent = typeof error === 'string' ? error : '업데이트를 확인하지 못했어요.'
+        } finally {
+            showRelease()
+            busy = false
+            button.disabled = false
+        }
+    }
+
+    async function install() {
+        if (busy) return
+        if (!release) return check()
+        busy = true
+        button.disabled = true
+        bar.removeAttribute('value')
+        label.textContent = '업데이트 받는 중…'
+        percentage.textContent = '—'
+        size.textContent = ''
+        download.hidden = false
+        const progress = new core.Channel()
+        progress.onmessage = ({ received, total }) => {
+            if (total > 0) {
+                bar.max = total
+                bar.value = received
+                percentage.textContent = Math.min(100, Math.floor(received / total * 100)) + '%'
+                size.textContent = mib(received) + ' / ' + mib(total)
+                if (received >= total) label.textContent = '서명 확인 및 설치 준비 중…'
+            } else {
+                size.textContent = mib(received)
+            }
+        }
+        try {
+            await core.invoke('install_launcher_update', { version: release.version, progress })
+        } catch (error) {
+            title.textContent = typeof error === 'string' ? error : '업데이트를 적용하지 못했어요.'
+        } finally {
+            busy = false
+            button.disabled = false
+            download.hidden = true
+        }
+    }
+
+    button.addEventListener('click', install)
+    window.setTimeout(check, 1500)
+    window.setInterval(check, 30 * 60 * 1000)
+}
+
 function bindAbout(version) {
     byId('settingsAboutCurrentVersionValue').textContent = version
     const about = byId('settingsTabAbout')
@@ -449,6 +539,7 @@ try {
     setActiveServer(initial)
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
     bindAbout(snapshot.version)
+    bindUpdates(snapshot)
 
     const settingsButton = byId('settingsMediaButton')
     const accountButton = byId('avatarOverlay')
@@ -457,11 +548,10 @@ try {
     accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
     for (const tab of settingsTabs) {
         const id = tab.getAttribute('rSc')
-        tab.disabled = id === 'settingsTabUpdate'
         tab.addEventListener('click', () => selectSettingsTab(id))
     }
     bindMods(settingsDone)
-    allowPrerelease.disabled = true
+    allowPrerelease.disabled = !snapshot.updatesAvailable || snapshot.version.split('+')[0].includes('-')
     launcherSettings.querySelector('.settingsFileSelDesc').textContent = '게임 파일은 이 폴더에 저장돼요. 폴더를 바꾸면 기존 파일은 원래 위치에 남아요.'
     chooseGameDirectory.addEventListener('click', async () => {
         chooseGameDirectory.disabled = true
@@ -504,7 +594,8 @@ try {
             await core.invoke('save_game_settings', {
                 settings,
                 java: javaSettings.change(),
-                dataDirectory: selectedGameDirectory
+                dataDirectory: selectedGameDirectory,
+                allowPrerelease: allowPrerelease.disabled ? null : allowPrerelease.checked
             })
             showView('landingContainer')
             settingsButton.focus()

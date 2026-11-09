@@ -100,11 +100,16 @@ impl Preferences {
         &self.settings
     }
 
+    pub fn allow_prerelease(&self) -> bool {
+        self.settings.launcher.allow_prerelease.unwrap_or(false)
+    }
+
     pub fn update_game_settings(
         &mut self,
         settings: GameSettings,
         java: Option<(String, JavaOptions)>,
         data_directory: Option<PathBuf>,
+        allow_prerelease: Option<bool>,
         path: &Path,
     ) -> io::Result<()> {
         let previous = std::mem::replace(&mut self.settings.game, settings);
@@ -114,10 +119,15 @@ impl Preferences {
         });
         let previous_directory = data_directory
             .map(|directory| self.settings.launcher.data_directory.replace(directory));
+        let previous_prerelease = allow_prerelease
+            .map(|allowed| self.settings.launcher.allow_prerelease.replace(allowed));
         if let Err(error) = self.save(path) {
             self.settings.game = previous;
             if let Some(directory) = previous_directory {
                 self.settings.launcher.data_directory = directory;
+            }
+            if let Some(allowed) = previous_prerelease {
+                self.settings.launcher.allow_prerelease = allowed;
             }
             match previous_java {
                 Some((server_id, Some(options))) => {
@@ -245,6 +255,7 @@ mod tests {
                 game,
                 Some(("alice".into(), java)),
                 Some(directory.clone()),
+                Some(true),
                 &path,
             )
             .unwrap();
@@ -254,10 +265,12 @@ mod tests {
             GameSettings::default(),
             Some(("alice".into(), JavaOptions::default())),
             Some(root.path().join("another-folder")),
+            Some(false),
             &path.join("not-a-directory"),
         );
         assert!(error.is_err());
         assert_eq!(reopened.game_data_dir(), Some(directory.as_path()));
+        assert!(reopened.allow_prerelease());
         let (game, java) = reopened.launch_settings("alice");
         assert_eq!(game.fullscreen, Some(true));
         assert_eq!(java.min_ram.as_deref(), Some("3072M"));

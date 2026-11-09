@@ -7,6 +7,8 @@ fn main() {
             "server_status",
             "authentication_status",
             "open_project_page",
+            "check_launcher_update",
+            "install_launcher_update",
             "play_server",
             "game_settings",
             "choose_game_folder",

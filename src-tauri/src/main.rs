@@ -13,6 +13,7 @@ mod java;
 mod minecraft;
 mod preferences;
 mod status;
+mod updater;
 #[cfg(windows)]
 mod wizard;
 
@@ -70,6 +71,7 @@ impl Launcher {
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
     version: String,
+    updates_available: bool,
     servers: Vec<Server>,
     selected_server: Option<String>,
 }
@@ -96,6 +98,7 @@ fn launcher_snapshot(app: AppHandle, launcher: State<'_, Launcher>) -> Result<Sn
         .map_err(|error| error.to_string())?;
     Ok(Snapshot {
         version: app.package_info().version.to_string(),
+        updates_available: updater::available(),
         servers: launcher.servers.clone(),
         selected_server: preferences.selected_server.clone(),
     })
@@ -235,6 +238,7 @@ fn save_game_settings(
     settings: GameSettings,
     java: Option<JavaSettingsChange>,
     data_directory: Option<PathBuf>,
+    allow_prerelease: Option<bool>,
     launcher: State<'_, Launcher>,
 ) -> Result<(), String> {
     if [settings.res_width, settings.res_height]
@@ -279,7 +283,13 @@ fn save_game_settings(
         .lock()
         .map_err(|_| "런처 설정을 읽지 못했어요.")?;
     preferences
-        .update_game_settings(settings, java, data_directory, &launcher.preferences_path)
+        .update_game_settings(
+            settings,
+            java,
+            data_directory,
+            allow_prerelease,
+            &launcher.preferences_path,
+        )
         .map_err(|_| "게임 설정을 저장하지 못했어요.".into())
 }
 
@@ -416,6 +426,8 @@ fn main() {
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::Updates::default())
         .setup(|app| {
             let test_profile = test_profile()?;
             let login_receipt = test_profile
@@ -452,6 +464,8 @@ fn main() {
             server_status,
             about::authentication_status,
             about::open_project_page,
+            updater::check_launcher_update,
+            updater::install_launcher_update,
             play_server,
             game_settings,
             choose_game_folder,

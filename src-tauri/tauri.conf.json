@@ -20,5 +20,12 @@
   "bundle": {
     "active": true,
     "icon": ["../build/icon.ico", "icons/icon.icns", "../build/icon.png"]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "requireSignedVersion": true,
+      "windows": { "installMode": "passive" }
+    }
   }
 }

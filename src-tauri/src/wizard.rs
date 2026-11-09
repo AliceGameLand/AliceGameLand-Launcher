@@ -182,6 +182,19 @@ fn update_target() -> Option<UpdateTarget> {
     })
 }
 
+pub(crate) fn can_update_running_install() -> bool {
+    let Some(target) = update_target() else {
+        return false;
+    };
+    match (
+        env::current_exe().and_then(fs::canonicalize),
+        target.destination.join(LAUNCHER).canonicalize(),
+    ) {
+        (Ok(running), Ok(registered)) => running == registered,
+        _ => false,
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Info {
