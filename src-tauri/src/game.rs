@@ -133,9 +133,9 @@ fn install_neoforge(common: &Path, java: &Path, version: &str, installer: &Path)
     let output = command
         .arg("-Djava.awt.headless=true")
         .arg("-jar")
-        .arg(installer)
+        .arg(installer.strip_prefix(common)?)
         .arg("--install-client")
-        .arg(common)
+        .arg(".")
         .current_dir(common)
         .stdin(Stdio::null())
         .output()?;
@@ -264,7 +264,11 @@ fn write_mod_list(instance: &Path, loader: &Loader) -> Result<Vec<String>> {
     stage.write_all(loader.mods.join("\n").as_bytes())?;
     let path = instance.join("forgeMods.list");
     stage.persist(&path)?;
-    let path = path_text(&path)?;
+    let path = path_text(if cfg!(windows) {
+        path.strip_prefix(instance)?
+    } else {
+        &path
+    })?;
     if loader.installer.is_none() {
         Ok(vec!["--fabric.addMods".into(), format!("@{path}")])
     } else {
@@ -298,7 +302,14 @@ fn prepare_launch(
 ) -> Result<PreparedLaunch> {
     let (server, java) = prepare_files(&launch.profile, &launch.root, &launch.server_id, progress)?;
     let common = launch.root.join("common");
-    let libraries = common.join("libraries");
+    let instance = launch.root.join("instances").join(&server.id);
+    // Windows Java converts command-line arguments through the system code page.
+    let java_root = if cfg!(windows) {
+        Path::new("../..")
+    } else {
+        &launch.root
+    };
+    let java_common = java_root.join("common");
     let loader = server.loader(&launch.root)?;
     let loader_version: LoaderVersion = serde_json::from_reader(fs::File::open(&loader.manifest)?)?;
     let minecraft_id = &server.minecraft_version;
@@ -314,9 +325,17 @@ fn prepare_launch(
         install_neoforge(&common, &java, version, installer)?;
     }
 
-    let natives = tempfile::Builder::new()
-        .prefix("alice-natives-")
-        .tempdir()?;
+    let mut native_dir = tempfile::Builder::new();
+    native_dir.prefix("alice-natives-");
+    let (natives, native_argument) = if cfg!(windows) {
+        let natives = native_dir.tempdir_in(&common)?;
+        let argument = java_common.join(natives.path().strip_prefix(&common)?);
+        (natives, argument)
+    } else {
+        let natives = native_dir.tempdir()?;
+        let argument = natives.path().to_path_buf();
+        (natives, argument)
+    };
     let java_natives = natives.path().join("java");
     fs::create_dir(&java_natives)?;
     let mut classpath = Vec::new();
@@ -339,10 +358,14 @@ fn prepare_launch(
         }
     }
     classpath.extend(runtime.into_iter().map(|(_, path)| path));
+    if cfg!(windows) {
+        for path in &mut classpath {
+            *path = java_root.join(path.strip_prefix(&launch.root)?);
+        }
+    }
     let classpath = env::join_paths(classpath)?
         .into_string()
         .map_err(|_| "클래스 경로를 읽지 못했어요.")?;
-    let instance = launch.root.join("instances").join(&server.id);
     fs::create_dir_all(&instance)?;
     let fullscreen = launch.settings.fullscreen.unwrap_or(false);
     let variables = BTreeMap::from([
@@ -354,8 +377,15 @@ fn prepare_launch(
         ("user_type", "msa".into()),
         ("version_name", server.id.clone()),
         ("version_type", vanilla.version_type.clone()),
-        ("game_directory", path_text(&instance)?),
-        ("assets_root", path_text(&common.join("assets"))?),
+        (
+            "game_directory",
+            path_text(if cfg!(windows) {
+                Path::new(".")
+            } else {
+                &instance
+            })?,
+        ),
+        ("assets_root", path_text(&java_common.join("assets"))?),
         ("assets_index_name", vanilla.assets.clone()),
         (
             "resolution_width",
@@ -365,8 +395,11 @@ fn prepare_launch(
             "resolution_height",
             launch.settings.res_height.unwrap_or(720).to_string(),
         ),
-        ("natives_directory", path_text(natives.path())?),
-        ("library_directory", path_text(&libraries)?),
+        ("natives_directory", path_text(&native_argument)?),
+        (
+            "library_directory",
+            path_text(&java_common.join("libraries"))?,
+        ),
         ("launcher_name", "AliceGameLand-Launcher".into()),
         ("launcher_version", launch.launcher_version),
         (
@@ -472,7 +505,7 @@ mod tests {
     #[ignore = "downloads the live Minecraft distribution and installs the NeoForge client loader"]
     fn prepares_real_fabric_and_neoforge_launches() -> Result<()> {
         let temporary = tempfile::tempdir()?;
-        let profile = temporary.path().join("profile");
+        let profile = temporary.path().join("런처 프로필");
         let root = temporary.path().join("앨리스 게임 폴더");
         let progress = Channel::new(|message| {
             if let tauri::ipc::InvokeResponseBody::Json(stage) = message {
@@ -535,7 +568,14 @@ mod tests {
                 .find(|pair| pair[0] == "-cp")
                 .ok_or("Launch classpath is missing")?[1];
             for jar in env::split_paths(classpath) {
-                assert!(jar.is_file(), "Missing runtime library {}", jar.display());
+                assert!(
+                    instance.join(&jar).is_file(),
+                    "Missing runtime library {}",
+                    jar.display()
+                );
+            }
+            if cfg!(windows) {
+                assert!(args.iter().all(|arg| arg.as_encoded_bytes().is_ascii()));
             }
             assert!(fs::read_dir(prepared.natives.path().join("java"))?
                 .next()
