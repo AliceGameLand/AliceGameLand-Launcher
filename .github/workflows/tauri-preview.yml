@@ -18,8 +18,6 @@ jobs:
             platform: windows-x64
           - runner: macos-15
             platform: macos-arm64
-          - runner: macos-15-intel
-            platform: macos-x64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
@@ -65,7 +63,7 @@ jobs:
           app=$(find "$mount" -maxdepth 1 -name '*.app' -print -quit)
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
           launcher="$app/Contents/MacOS/$executable"
-          test "$(lipo -archs "$launcher")" = "$(uname -m)"
+          test "$(lipo -archs "$launcher")" = arm64
           printf '%s\n' '{"settings":{"game":{"fullscreen":true}},"authenticationDatabase":{"fixture":true}}' > "$profile/앨리스의 게임랜드/config.json"
           ALICE_TAURI_TEST_PROFILE="$profile" "$launcher" > "$profile/startup.log" 2>&1 &
           pid=$!

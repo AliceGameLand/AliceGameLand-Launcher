@@ -1,5 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+compile_error!("macOS builds require Apple Silicon (aarch64-apple-darwin).");
+
 mod artifacts;
 mod auth;
 mod distribution;

@@ -31,11 +31,6 @@ fn runtime_for(os: &str, arch: &str) -> Result<Runtime> {
             141_285_173,
             "636bdc13dc649ddc7d5921c5c7d23cca6e44fd19d662b45cc9c02135a6c96c42",
         ),
-        ("macos", "x86_64") => (
-            "OpenJDK25U-jdk_x64_mac_hotspot_25.0.5_8.tar.gz",
-            120_336_964,
-            "32cd4d2151c91aa00d0fc911edfd05245ed40fa6b1aa894d5f35c928cd67a59d",
-        ),
         ("macos", "aarch64") => (
             "OpenJDK25U-jdk_aarch64_mac_hotspot_25.0.5_8.tar.gz",
             136_446_056,
@@ -164,14 +159,12 @@ mod tests {
     #[test]
     fn selects_arch_specific_archives_and_native_java_paths() {
         let windows = runtime_for("windows", "x86_64").unwrap();
-        let intel = runtime_for("macos", "x86_64").unwrap();
         let silicon = runtime_for("macos", "aarch64").unwrap();
         assert!(windows.archive.ends_with(".zip"));
         assert_eq!(windows.executable, "bin/javaw.exe");
-        assert!(intel.archive.contains("_x64_mac_"));
         assert!(silicon.archive.contains("_aarch64_mac_"));
-        assert_eq!(intel.executable, "Contents/Home/bin/java");
-        assert_eq!(silicon.executable, intel.executable);
+        assert_eq!(silicon.executable, "Contents/Home/bin/java");
+        assert!(runtime_for("macos", "x86_64").is_err());
         assert!(runtime_for("linux", "x86_64").is_err());
     }
 }

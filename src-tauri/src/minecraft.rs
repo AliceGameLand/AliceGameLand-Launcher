@@ -190,7 +190,7 @@ fn rules_allow(rules: &[Rule], os: &str, arch: &str, custom_resolution: bool) ->
 fn native_for_platform(coordinate: &str, os: &str, arch: &str) -> bool {
     match coordinate.split(':').nth(3) {
         Some("natives-macos-arm64" | "osx-aarch_64") => os == "osx" && arch == "aarch64",
-        Some("natives-macos" | "osx-x86_64") => os == "osx" && arch == "x86_64",
+        Some("natives-macos" | "osx-x86_64") => false,
         Some("natives-windows") => os == "windows" && arch == "x86_64",
         Some("natives-windows-arm64") => os == "windows" && arch == "aarch64",
         Some("natives-windows-x86") => os == "windows" && arch == "x86",
@@ -347,12 +347,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mac_native_libraries_follow_the_machine_architecture() {
-        assert!(native_for_platform(
-            "org.lwjgl:lwjgl:3:natives-macos",
-            "osx",
-            "x86_64"
-        ));
+    fn mac_native_libraries_only_use_apple_silicon() {
         assert!(!native_for_platform(
             "org.lwjgl:lwjgl:3:natives-macos",
             "osx",
