@@ -39,6 +39,12 @@ jobs:
       - if: runner.os == 'Windows'
         run: npm run tauri -- build --ci --no-bundle -- --locked
       - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: tauri-windows-x64-portable
+          path: src-tauri/target/release/*.exe
+          if-no-files-found: error
+      - if: runner.os == 'Windows'
         run: node scripts/build-tauri-setup.mjs
       - if: runner.os == 'Windows'
         run: |
@@ -52,10 +58,4 @@ jobs:
           path: |
             dist/tauri-setup/*-setup.exe
             src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: error
-      - if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v6
-        with:
-          name: tauri-windows-x64-portable
-          path: src-tauri/target/release/*.exe
           if-no-files-found: error
