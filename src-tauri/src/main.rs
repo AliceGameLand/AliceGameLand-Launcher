@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod auth;
 mod java;
 mod preferences;
 
@@ -100,7 +101,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             launcher_snapshot,
             select_server,
-            prepare_java
+            prepare_java,
+            auth::account_profile,
+            auth::microsoft_sign_in
         ])
         .run(tauri::generate_context!())
         .expect("failed to start AliceGameLand");
