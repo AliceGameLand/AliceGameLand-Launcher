@@ -35,3 +35,25 @@ for (const name of ['serverart.js', 'servericon.js', 'artworktransition.js']) {
 }
 await cp(path.join(root, 'tauri-ui', 'launcher.mjs'), path.join(output, 'launcher.mjs'))
 await writeFile(path.join(output, 'index.html'), html)
+
+if (process.platform === 'win32') {
+    const wizard = path.join(output, 'wizard')
+    const installer = path.join(root, 'installer')
+    await mkdir(wizard, { recursive: true })
+    for (const [name, directory] of [['setup', installer], ['remove', path.join(installer, 'uninstall')]]) {
+        const page = await readFile(path.join(directory, 'index.html'), 'utf8')
+        await writeFile(path.join(wizard, name + '.html'), page
+            .replace(/ {4}<meta http-equiv="Content-Security-Policy"[^\n]*\r?\n/, '')
+            .replace('assets/SealCircle.png', '../assets/images/SealCircle.png')
+            .replace('<div class="brand">', '<div class="brand" data-tauri-drag-region>')
+            .replace('필요한 Java가 함께 설치됩니다.', 'Java는 첫 게임 실행 때 내려받아요.')
+            .replace('<script src="renderer.js"></script>', '<script type="module" src="bridge.mjs"></script>'))
+        const renderer = await readFile(path.join(directory, 'renderer.js'), 'utf8')
+        await writeFile(path.join(wizard, name + '.mjs'), renderer
+            .replace('런처와 Java 파일을 준비하고 있습니다.', '런처를 설치하고 있어요.'))
+    }
+    const style = await readFile(path.join(installer, 'style.css'), 'utf8')
+    await writeFile(path.join(wizard, 'style.css'),
+        style.replace('assets/PretendardVariable.woff2', '../assets/fonts/PretendardVariable.woff2'))
+    await cp(path.join(root, 'tauri-ui', 'wizard.mjs'), path.join(wizard, 'bridge.mjs'))
+}

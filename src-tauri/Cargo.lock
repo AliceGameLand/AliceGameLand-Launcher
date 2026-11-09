@@ -37,6 +37,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
+ "windows",
  "zip",
 ]
 

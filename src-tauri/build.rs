@@ -10,6 +10,11 @@ fn main() {
             "microsoft_sign_out",
             "account_profile",
             "microsoft_sign_in",
+            "wizard_info",
+            "wizard_folder",
+            "wizard_install",
+            "wizard_remove",
+            "wizard_launch",
         ]),
     ))
     .expect("failed to prepare launcher permissions");

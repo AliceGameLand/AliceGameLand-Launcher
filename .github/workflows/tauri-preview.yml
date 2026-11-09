@@ -36,12 +36,17 @@ jobs:
           npm run lint -- --rule '@stylistic/linebreak-style: off'
       - run: npm run tauri:ui
       - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml
-      - run: npm run tauri -- build --ci -- --locked
+      - if: runner.os == 'Windows'
+        run: npm run tauri -- build --ci --no-bundle -- --locked
+      - if: runner.os == 'Windows'
+        run: node scripts/build-tauri-setup.mjs
+      - if: runner.os == 'macOS'
+        run: npm run tauri -- build --ci -- --locked
       - uses: actions/upload-artifact@v6
         with:
           name: tauri-${{ matrix.platform }}
           path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
+            dist/tauri-setup/*-setup.exe
             src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
       - if: runner.os == 'Windows'

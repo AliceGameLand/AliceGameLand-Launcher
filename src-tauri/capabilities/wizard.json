@@ -1,0 +1,16 @@
+{
+  "identifier": "wizard",
+  "description": "Windows setup and removal windows",
+  "platforms": ["windows"],
+  "windows": ["setup-wizard", "remove-wizard"],
+  "permissions": [
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "allow-wizard-info",
+    "allow-wizard-folder",
+    "allow-wizard-install",
+    "allow-wizard-remove",
+    "allow-wizard-launch"
+  ]
+}

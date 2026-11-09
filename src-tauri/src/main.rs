@@ -7,6 +7,8 @@ mod game;
 mod java;
 mod minecraft;
 mod preferences;
+#[cfg(windows)]
+mod wizard;
 
 use std::{path::PathBuf, sync::Mutex};
 
@@ -166,6 +168,13 @@ fn test_profile() -> std::io::Result<Option<PathBuf>> {
 }
 
 fn main() {
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    match wizard::Mode::from_args() {
+        Ok(Some(mode)) => return wizard::run(context, mode),
+        Ok(None) => {}
+        Err(_) => std::process::exit(2),
+    }
     tauri::Builder::default()
         .setup(|app| {
             let test_profile = test_profile()?;
@@ -182,6 +191,7 @@ fn main() {
                 preferences_path,
                 preferences: Mutex::new(preferences),
             });
+            tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -195,7 +205,7 @@ fn main() {
             auth::account_profile,
             auth::microsoft_sign_in
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("failed to start AliceGameLand")
         .run(|_, event| {
             if matches!(event, tauri::RunEvent::Exit) {
