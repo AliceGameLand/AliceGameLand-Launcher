@@ -7,6 +7,14 @@ diff --git a/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh b/node_
 +  # The unelevated process waits for UAC and must not hold the install directory open.
 +  SetOutPath "$TEMP"
    ${LogSet} on
+@@ -17,4 +18,7 @@ Function un.onInit
+   ${If} ${Silent}
+     call un.checkAppRunning
+   ${else}
++    !ifmacrodef preUnInit
++      !insertmacro preUnInit
++    !endif
+     !ifdef ONE_CLICK
 diff --git a/node_modules/app-builder-lib/templates/nsis/multiUser.nsh b/node_modules/app-builder-lib/templates/nsis/multiUser.nsh
 index c345dee..b5962ce 100644
 --- a/node_modules/app-builder-lib/templates/nsis/multiUser.nsh

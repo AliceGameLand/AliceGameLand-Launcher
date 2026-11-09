@@ -66,10 +66,23 @@ foreach ($mode in $Scope) {
         Remove-Item -LiteralPath $userFile
     }
 
-    # The UI also runs a temporary copy, so the registered uninstaller can be deleted.
-    $worker = Join-Path $fixture 'remove-worker.exe'
-    Copy-Item -LiteralPath $uninstaller[0].FullName -Destination $worker
-    Invoke-NsisWorker $worker ('/S /{0} --alice-wizard-root="{1}" _?={1}' -f $mode, $root) $fixture
+    $worker = $null
+    if ($mode -eq 'allusers') {
+        # The installed NSIS executable starts a temporary copy and returns.
+        $engine = $uninstaller[0].FullName
+        Invoke-NsisWorker $engine ('/S /allusers --alice-wizard-root="{0}"' -f $root) $fixture
+        $wait = [Diagnostics.Stopwatch]::StartNew()
+        while ((Test-Path -LiteralPath $engine) -or (Find-Preview $hive)) {
+            if ($wait.Elapsed.TotalSeconds -ge 15) {
+                throw 'The machine uninstaller did not finish after its starter exited'
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    } else {
+        $worker = Join-Path $fixture 'remove-worker.exe'
+        Copy-Item -LiteralPath $uninstaller[0].FullName -Destination $worker
+        Invoke-NsisWorker $worker ('/S /currentuser --alice-wizard-root="{0}" _?={0}' -f $root) $fixture
+    }
     if (Find-Preview $hive) {
         throw "$mode left an uninstall registration"
     }
@@ -82,7 +95,7 @@ foreach ($mode in $Scope) {
     } elseif (Test-Path -LiteralPath $root) {
         throw 'Removal left an empty installation folder'
     }
-    Remove-Item -LiteralPath $worker
+    if ($worker) { Remove-Item -LiteralPath $worker }
     Remove-Item -LiteralPath $fixture
     Write-Output "$mode installation and removal passed ($hive)"
 }

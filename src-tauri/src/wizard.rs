@@ -11,6 +11,8 @@ use std::{
     },
 };
 
+use std::time::{Duration, Instant};
+
 use serde::{Deserialize, Serialize};
 use tauri::{ipc::Channel, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use windows::{
@@ -40,6 +42,7 @@ use windows::{
 
 const FOLDER: &str = "alice-gameland-tauri-preview";
 const LAUNCHER: &str = "AliceGameLand-Tauri.exe";
+const UNINSTALLER: &str = "Uninstall AliceGameLand-Tauri.exe";
 const INSTALL_KEY: PCWSTR = w!(r"Software\69bd89cc-35ff-5408-9b98-972ba4fb446c");
 const INVALID_PATH: &str = "설치할 폴더를 다시 선택해 주세요.";
 const RUNNING: &str = "실행 중인 런처를 닫은 뒤 다시 시도해 주세요.";
@@ -144,31 +147,34 @@ struct UpdateTarget {
     mode: Scope,
 }
 
+fn registered_directory(scope: Scope) -> Option<PathBuf> {
+    let hive = match scope {
+        Scope::User => HKEY_CURRENT_USER,
+        Scope::All => HKEY_LOCAL_MACHINE,
+    };
+    let mut value = [0u16; 201];
+    let mut bytes = std::mem::size_of_val(&value) as u32;
+    let status = unsafe {
+        RegGetValueW(
+            hive,
+            INSTALL_KEY,
+            w!("InstallLocation"),
+            RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
+            None,
+            Some(value.as_mut_ptr().cast()),
+            Some(&mut bytes),
+        )
+    };
+    if status != ERROR_SUCCESS {
+        return None;
+    }
+    let end = value.iter().position(|&unit| unit == 0)?;
+    directory(&String::from_utf16(&value[..end]).ok()?).ok()
+}
+
 fn update_target() -> Option<UpdateTarget> {
     [Scope::User, Scope::All].into_iter().find_map(|mode| {
-        let hive = match mode {
-            Scope::User => HKEY_CURRENT_USER,
-            Scope::All => HKEY_LOCAL_MACHINE,
-        };
-        let mut value = [0u16; 201];
-        let mut bytes = std::mem::size_of_val(&value) as u32;
-        let status = unsafe {
-            RegGetValueW(
-                hive,
-                INSTALL_KEY,
-                w!("InstallLocation"),
-                RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
-                None,
-                Some(value.as_mut_ptr().cast()),
-                Some(&mut bytes),
-            )
-        };
-        if status != ERROR_SUCCESS {
-            return None;
-        }
-        let end = value.iter().position(|&unit| unit == 0)?;
-        let value = String::from_utf16(&value[..end]).ok()?;
-        let destination = directory(&value).ok()?;
+        let destination = registered_directory(mode)?;
         destination
             .join(LAUNCHER)
             .is_file()
@@ -370,7 +376,7 @@ fn run_worker(backend: &Path, args: &str, elevate: bool) -> Result<(), String> {
         unsafe {
             ShellExecuteExW(&mut launch).map_err(|error| {
                 if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) {
-                    "설치 권한 요청이 취소되었어요. 다시 시도할 수 있어요."
+                    "관리자 권한 요청이 취소되었어요. 다시 시도할 수 있어요."
                 } else {
                     failure
                 }
@@ -525,15 +531,36 @@ async fn wizard_remove(state: State<'_, Wizard>) -> Result<Outcome, String> {
     let _operation = Operation::start(&state.busy)?;
     let (backend, root, scope) = (backend.clone(), root.clone(), *scope);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let args = format!(
-            r#"/S {} --alice-wizard-root="{}" _?={}"#,
+        if registered_directory(scope).as_ref() != Some(&root) {
+            return Err("등록된 설치 위치가 바뀌었어요. 제거 화면을 다시 열어 주세요.".into());
+        }
+        let installed_uninstaller = root.join(UNINSTALLER);
+        let machine = scope == Scope::All;
+        let mut args = format!(
+            r#"/S {} --alice-wizard-root="{}""#,
             scope.flag(),
-            root.display(),
             root.display()
         );
-        run_worker(&backend, &args, false)?;
-        if root.join(LAUNCHER).exists() {
-            return Err("런처 파일이 남아 있어요. 런처를 닫은 뒤 다시 시도해 주세요.".into());
+        if machine {
+            if backend != installed_uninstaller {
+                return Err("설치 폴더의 제거 파일을 찾지 못했어요.".into());
+            }
+            // NSIS copies the elevated uninstaller itself so the installed executable can be deleted.
+        } else {
+            args.push_str(&format!(" _?={}", root.display()));
+        }
+        run_worker(&backend, &args, machine)?;
+
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let launcher = root.join(LAUNCHER);
+        while launcher.try_exists().unwrap_or(true)
+            || installed_uninstaller.try_exists().unwrap_or(true)
+            || registered_directory(scope).as_ref() == Some(&root)
+        {
+            if !machine || Instant::now() >= deadline {
+                return Err("제거가 끝나지 않았어요. 런처를 닫은 뒤 다시 시도해 주세요.".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
         }
         Ok(None)
     })

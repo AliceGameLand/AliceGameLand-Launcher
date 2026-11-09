@@ -61,6 +61,7 @@
       IfErrors tauriSetupLaunchFailed
       ${If} $0 == 0
         SetOutPath "$TEMP"
+        SetErrorLevel 0
         Quit
       ${EndIf}
       tauriSetupLaunchFailed:
@@ -80,8 +81,59 @@
   ${EndIf}
 !macroend
 
+!macro preUnInit
+  # Show WebView2 before the stock uninstaller can request elevation.
+  ReadRegStr $R2 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ReadRegStr $R3 HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $R2 == "$INSTDIR"
+    StrCpy $R4 "/currentuser"
+  ${ElseIf} $R3 == "$INSTDIR"
+    StrCpy $R4 "/allusers"
+  ${Else}
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
+  ${If} $INSTDIR == ""
+    SetErrorLevel 1
+    Quit
+  ${EndIf}
+
+  System::Call 'kernel32::CreateMutexW(p 0, i 1, w "${APP_GUID}-remove-wizard") p .r0 ?e'
+  Pop $1
+  ${If} $1 == 183
+    SetErrorLevel 0
+    Quit
+  ${EndIf}
+
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR\wizard"
+  ClearErrors
+  CopyFiles /SILENT "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "$OUTDIR"
+  Rename "$OUTDIR\${APP_EXECUTABLE_FILENAME}" "$OUTDIR\AliceGameLand-Wizard.exe"
+  StrCpy $R5 "$INSTDIR\${UNINSTALL_FILENAME}"
+  ${If} $R4 == "/currentuser"
+    CopyFiles /SILENT "$R5" "$OUTDIR"
+    StrCpy $R5 "$OUTDIR\${UNINSTALL_FILENAME}"
+  ${EndIf}
+  IfErrors tauriRemoveLaunchFailed
+
+  ExecWait '"$OUTDIR\AliceGameLand-Wizard.exe" --alice-remove "$R5" "$INSTDIR" $R4' $1
+  IfErrors tauriRemoveLaunchFailed
+  ${If} $1 == 0
+    SetOutPath "$TEMP"
+    SetErrorLevel 0
+    Quit
+  ${EndIf}
+
+  tauriRemoveLaunchFailed:
+  SetOutPath "$TEMP"
+  MessageBox MB_YESNO|MB_ICONQUESTION "제거 화면을 열지 못했어요. Windows 제거 화면을 열까요?" IDYES tauriRemoveNative
+  SetErrorLevel 1
+  Quit
+  tauriRemoveNative:
+!macroend
+
 !macro customUnInit
-  Var /GLOBAL aliceRemoveFallback
   ${GetParameters} $R0
   ClearErrors
   ${GetOptions} $R0 "--alice-wizard-root=" $R1
@@ -91,42 +143,6 @@
       Quit
     ${EndIf}
     SetOutPath "$EXEDIR"
-  ${EndIf}
-
-  ${IfNot} ${Silent}
-    System::Call 'kernel32::CreateMutexW(p 0, i 1, w "${APP_GUID}-remove-wizard") p .r0 ?e'
-    Pop $1
-    ${If} $1 == 183
-      Quit
-    ${EndIf}
-
-    InitPluginsDir
-    SetOutPath "$PLUGINSDIR\wizard"
-    ClearErrors
-    CopyFiles /SILENT "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "$OUTDIR"
-    Rename "$OUTDIR\${APP_EXECUTABLE_FILENAME}" "$OUTDIR\AliceGameLand-Wizard.exe"
-    CopyFiles /SILENT "$INSTDIR\${UNINSTALL_FILENAME}" "$OUTDIR"
-    IfErrors tauriRemoveLaunchFailed
-
-    StrCpy $0 "/currentuser"
-    ${If} $installMode == "all"
-      StrCpy $0 "/allusers"
-    ${EndIf}
-    ExecWait '"$OUTDIR\AliceGameLand-Wizard.exe" --alice-remove "$OUTDIR\${UNINSTALL_FILENAME}" "$INSTDIR" $0' $1
-    IfErrors tauriRemoveLaunchFailed
-    ${If} $1 == 0
-      SetOutPath "$TEMP"
-      Quit
-    ${EndIf}
-
-    tauriRemoveLaunchFailed:
-    SetOutPath "$TEMP"
-    MessageBox MB_YESNO|MB_ICONQUESTION "제거 화면을 열지 못했어요. 런처 제거를 계속할까요?" IDYES tauriRemoveNative
-    Quit
-    tauriRemoveNative:
-    Call un.checkAppRunning
-    StrCpy $aliceRemoveFallback "1"
-    SetSilent silent
   ${EndIf}
 !macroend
 
@@ -143,13 +159,4 @@
   SetErrorLevel 2
   Quit
   tauriRemoveDone:
-!macroend
-
-
-!macro customUnInstallSection
-  Section
-    ${If} $aliceRemoveFallback == "1"
-      MessageBox MB_OK|MB_ICONINFORMATION "런처를 제거했어요."
-    ${EndIf}
-  SectionEnd
 !macroend
