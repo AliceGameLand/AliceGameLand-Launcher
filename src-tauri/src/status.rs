@@ -74,10 +74,10 @@ async fn resolve_srv(host: &str) -> Option<(String, u16)> {
     records
         .answers()
         .iter()
-        .find_map(|record| match record.data() {
-            RData::SRV(srv) if !srv.target().is_root() && srv.port() != 0 => Some((
-                srv.target().to_ascii().trim_end_matches('.').to_owned(),
-                srv.port(),
+        .find_map(|record| match &record.data {
+            RData::SRV(srv) if !srv.target.is_root() && srv.port != 0 => Some((
+                srv.target.to_ascii().trim_end_matches('.').to_owned(),
+                srv.port,
             )),
             _ => None,
         })
