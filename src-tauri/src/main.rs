@@ -7,6 +7,7 @@ mod game;
 mod java;
 mod minecraft;
 mod preferences;
+mod status;
 #[cfg(windows)]
 mod wizard;
 
@@ -59,6 +60,19 @@ fn select_server(server_id: String, launcher: State<'_, Launcher>) -> Result<(),
         return Err(error.to_string());
     }
     Ok(())
+}
+
+#[tauri::command]
+async fn server_status(
+    server_id: String,
+    launcher: State<'_, Launcher>,
+) -> Result<Option<status::Players>, String> {
+    let server = launcher
+        .servers
+        .iter()
+        .find(|server| server.id == server_id)
+        .ok_or("서버를 찾지 못했어요.")?;
+    Ok(status::query(&server.address).await)
 }
 
 #[tauri::command]
@@ -282,6 +296,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             launcher_snapshot,
             select_server,
+            server_status,
             play_server,
             game_settings,
             java_settings,

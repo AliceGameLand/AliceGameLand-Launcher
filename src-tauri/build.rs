@@ -3,6 +3,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "launcher_snapshot",
             "select_server",
+            "server_status",
             "play_server",
             "game_settings",
             "java_settings",

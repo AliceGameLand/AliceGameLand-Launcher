@@ -15,9 +15,12 @@ const overlay = byId('overlayContainer')
 const acknowledge = byId('overlayAcknowledge')
 const playButton = byId('launch_button')
 const launchDetails = byId('launch_details')
+const homeStatus = byId('homeServerStatus')
 let needsServerSelection
 let activeServer
 let activeProfile
+let visibleView
+let statusRequest = 0
 const javaSettings = createJavaSettings(document)
 const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
 const gameFields = {
@@ -38,6 +41,7 @@ for (const area of document.querySelectorAll('.frame-brand, .frame-spacer')) {
 }
 
 function showView(id) {
+    visibleView = id
     byId('main').style.display = 'block'
     for (const view of ['loginOptionsContainer', 'waitingContainer', 'serverSetupContainer', 'landingContainer', 'settingsContainer']) {
         byId(view).style.display = view === id ? 'grid' : 'none'
@@ -45,6 +49,7 @@ function showView(id) {
     byId('frameHomeActions').hidden = id !== 'landingContainer'
     byId('loadingContainer').hidden = true
     document.body.classList.remove('launcher-starting')
+    if (id === 'landingContainer') void refreshServerStatus()
 }
 
 function showError(title, message, restoreFocus) {
@@ -78,7 +83,22 @@ function setActiveServer(server) {
     for (const button of homeList.children) {
         button.setAttribute('aria-pressed', String(button.dataset.serverId === server.id))
     }
+    homeStatus.dataset.state = 'checking'
+    homeStatus.textContent = '상태 확인 중…'
+    if (visibleView === 'landingContainer') void refreshServerStatus()
 }
+
+async function refreshServerStatus() {
+    if (visibleView !== 'landingContainer' || !activeServer) return
+    const request = ++statusRequest
+    homeStatus.hidden = false
+    const players = await core.invoke('server_status', { serverId: activeServer.id }).catch(() => null)
+    if (request !== statusRequest) return
+    homeStatus.dataset.state = players ? 'online' : 'unknown'
+    homeStatus.textContent = players ? `접속 ${players.online}/${players.max}명` : '접속 상태 확인 불가'
+}
+
+window.setInterval(refreshServerStatus, 5 * 60 * 1000)
 
 function showAuthenticated(profile) {
     activeProfile = profile
