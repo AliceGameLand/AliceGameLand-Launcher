@@ -1,4 +1,7 @@
 fn main() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        build_windows_java_launcher();
+    }
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "launcher_snapshot",
@@ -30,4 +33,30 @@ fn main() {
         ]),
     ))
     .expect("failed to prepare launcher permissions");
+}
+
+fn build_windows_java_launcher() {
+    use std::{env, path::PathBuf, process::Command};
+
+    let source = "windows/java-launcher.rs";
+    let manifest = "windows/java-launcher.manifest";
+    println!("cargo:rerun-if-changed={source}");
+    println!("cargo:rerun-if-changed={manifest}");
+    let manifest = env::current_dir().unwrap().join(manifest);
+    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("alice-java.exe");
+    let status = Command::new(env::var_os("RUSTC").unwrap())
+        .args(["--edition=2021", "--target"])
+        .arg(env::var_os("TARGET").unwrap())
+        .args([
+            "-Copt-level=s",
+            "-Cstrip=symbols",
+            "-Clink-arg=/MANIFEST:EMBED",
+        ])
+        .arg(format!("-Clink-arg=/MANIFESTINPUT:{}", manifest.display()))
+        .arg(source)
+        .arg("-o")
+        .arg(output)
+        .status()
+        .expect("failed to compile the Windows Java launcher");
+    assert!(status.success(), "Windows Java launcher build failed");
 }

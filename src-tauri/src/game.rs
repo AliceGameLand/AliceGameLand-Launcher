@@ -119,18 +119,7 @@ fn install_neoforge(common: &Path, java: &Path, version: &str, installer: &Path)
         Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error.into()),
     }
-    let executable = if cfg!(windows) {
-        java.with_file_name("java.exe")
-    } else {
-        java.to_path_buf()
-    };
-    let mut command = Command::new(executable);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    let output = command
+    let output = java::command(java)
         .arg("-Djava.awt.headless=true")
         .arg("-jar")
         .arg(installer.strip_prefix(common)?)
@@ -445,7 +434,7 @@ fn prepare_launch(
     }
     args.extend(write_mod_list(&instance, &loader)?);
     set_game_options(&instance, fullscreen)?;
-    let mut command = Command::new(java);
+    let mut command = java::command(&java);
     command
         .args(args)
         .current_dir(instance)

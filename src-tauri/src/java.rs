@@ -20,7 +20,7 @@ struct Runtime {
     archive: &'static str,
     bytes: u64,
     sha256: &'static str,
-    console: &'static str,
+    archive_executable: &'static str,
     executable: &'static str,
 }
 
@@ -38,8 +38,8 @@ fn runtime_for(os: &str, arch: &str) -> Result<Runtime> {
         ),
         _ => return Err(format!("Unsupported Java platform: {os}/{arch}").into()),
     };
-    let (console, executable) = if os == "windows" {
-        ("bin/java.exe", "bin/javaw.exe")
+    let (archive_executable, executable) = if os == "windows" {
+        ("bin/java.exe", "bin/alice-java.exe")
     } else {
         ("Contents/Home/bin/java", "Contents/Home/bin/java")
     };
@@ -47,7 +47,7 @@ fn runtime_for(os: &str, arch: &str) -> Result<Runtime> {
         archive,
         bytes,
         sha256,
-        console,
+        archive_executable,
         executable,
     })
 }
@@ -62,6 +62,52 @@ pub fn cached_executable(base: &Path) -> Option<PathBuf> {
     let runtime = runtime_for(std::env::consts::OS, std::env::consts::ARCH).ok()?;
     let path = cache_destination(base).join(runtime.executable);
     path.is_file().then_some(path)
+}
+
+pub fn command(executable: &Path) -> Command {
+    let command = Command::new(executable);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut command = command;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        command
+    }
+    #[cfg(not(windows))]
+    command
+}
+
+fn validate(executable: &Path) -> Result<()> {
+    let version = command(executable).arg("-version").output()?;
+    let reported = String::from_utf8_lossy(&version.stderr);
+    if !version.status.success() || !reported.contains("version \"25.") {
+        return Err(format!(
+            "Java 25 검증에 실패했어요. ({})\n{}",
+            version.status,
+            reported.trim()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn install_launcher(destination: &Path, executable: &Path) -> Result<()> {
+    let bin = destination.join("bin");
+    let mut staged = tempfile::Builder::new().suffix(".exe").tempfile_in(bin)?;
+    staged.write_all(include_bytes!(concat!(env!("OUT_DIR"), "/alice-java.exe")))?;
+    staged.as_file().sync_all()?;
+    let staged = staged.into_temp_path();
+    validate(staged.as_ref())?;
+    match staged.persist_noclobber(executable) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if error.error.kind() == io::ErrorKind::AlreadyExists && executable.is_file() =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn download(runtime: &Runtime, destination: &Path) -> Result<()> {
@@ -107,6 +153,11 @@ pub fn prepare(base: &Path) -> Result<PathBuf> {
     if executable.is_file() {
         return Ok(executable);
     }
+    #[cfg(windows)]
+    if destination.join(runtime.archive_executable).is_file() {
+        install_launcher(&destination, &executable)?;
+        return Ok(executable);
+    }
 
     fs::create_dir_all(base)?;
     let work = tempfile::tempdir_in(base)?;
@@ -125,23 +176,15 @@ pub fn prepare(base: &Path) -> Result<PathBuf> {
         .collect::<io::Result<Vec<_>>>()?
         .into_iter()
         .map(|entry| entry.path())
-        .filter(|path| path.join(runtime.executable).is_file());
+        .filter(|path| path.join(runtime.archive_executable).is_file());
     let root = directories.next().ok_or("Java executable is missing")?;
     if directories.next().is_some() {
         return Err("Java archive contains more than one runtime".into());
     }
-    let mut command = Command::new(root.join(runtime.console));
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
-    }
-    let version = command.arg("-version").output()?;
-    if !version.status.success()
-        || !String::from_utf8_lossy(&version.stderr).contains("version \"25.")
-    {
-        return Err("The extracted Java runtime could not be validated".into());
-    }
+    install_launcher(&root, &root.join(runtime.executable))?;
+    #[cfg(not(windows))]
+    validate(&root.join(runtime.executable))?;
 
     // Publish the complete runtime atomically so a retry cannot use a partial download.
     if let Err(error) = fs::rename(&root, &destination) {
@@ -161,7 +204,8 @@ mod tests {
         let windows = runtime_for("windows", "x86_64").unwrap();
         let silicon = runtime_for("macos", "aarch64").unwrap();
         assert!(windows.archive.ends_with(".zip"));
-        assert_eq!(windows.executable, "bin/javaw.exe");
+        assert_eq!(windows.archive_executable, "bin/java.exe");
+        assert_eq!(windows.executable, "bin/alice-java.exe");
         assert!(silicon.archive.contains("_aarch64_mac_"));
         assert_eq!(silicon.executable, "Contents/Home/bin/java");
         assert!(runtime_for("macos", "x86_64").is_err());
@@ -180,6 +224,12 @@ mod tests {
         fs::write(&marker, b"first preparation")?;
         assert_eq!(prepare(cache.path())?, executable);
         assert_eq!(fs::read_to_string(marker)?, "first preparation");
+        #[cfg(windows)]
+        {
+            fs::remove_file(&executable)?;
+            assert_eq!(prepare(cache.path())?, executable);
+            assert!(executable.is_file());
+        }
         Ok(())
     }
 }
