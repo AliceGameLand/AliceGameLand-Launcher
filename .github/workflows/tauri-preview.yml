@@ -4,6 +4,11 @@ on:
   push:
     branches: [codex/tauri-migration]
   workflow_dispatch:
+    inputs:
+      benchmark:
+        description: Compare Windows launcher performance with Electron v1.0.41
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -71,6 +76,38 @@ jobs:
           $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
           ./scripts/test-tauri-setup.ps1 -Installer $setup.FullName
           node scripts/test-tauri-update.mjs $setup.FullName
+      - name: Compare Windows launcher startup and memory
+        if: runner.os == 'Windows' && (inputs.benchmark || contains(github.event.head_commit.message, '[benchmark]'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $reference = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "alice-benchmark-$([guid]::NewGuid())")
+          gh release download v1.0.41 --repo AliceGameLand/AliceGameLand-Launcher --pattern 'alice-gameland-setup-1.0.41.exe' --dir $reference.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the published Electron reference' }
+          $setup = Join-Path $reference.FullName 'alice-gameland-setup-1.0.41.exe'
+          if ((Get-FileHash -LiteralPath $setup).Hash -ne '276B1011E9455C31D0E5CC360A25C8F10CDD1AAF41DF81A625E3D43D3C35FD3F') {
+            throw 'The published Electron reference digest changed'
+          }
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip/7z.exe'
+          $wrapper = Join-Path $reference.FullName 'wrapper'
+          & $sevenZip x -t7z $setup 'resources\payload\launcher.exe' "-o$wrapper" -y
+          if ($LASTEXITCODE -gt 1) { throw 'Could not extract the Electron setup payload' }
+          $payload = Join-Path $wrapper 'resources/payload/launcher.exe'
+          $application = Join-Path $reference.FullName 'application'
+          & $sevenZip x -t7z $payload "-o$application" -y
+          if ($LASTEXITCODE -gt 1) { throw 'Could not extract the Electron application' }
+          $electron = Join-Path $application '앨리스의 게임랜드.exe'
+          if (!(Test-Path -LiteralPath $electron -PathType Leaf)) { throw 'Missing Electron application' }
+          node scripts/benchmark-launcher-windows.mjs $electron src-tauri/target/release/alice-gameland.exe --tauri-receipt |
+            Tee-Object -FilePath dist/benchmark-windows.json
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher benchmark did not finish' }
+      - name: Upload the Windows comparison
+        if: runner.os == 'Windows' && (inputs.benchmark || contains(github.event.head_commit.message, '[benchmark]'))
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-launcher-benchmark
+          path: dist/benchmark-windows.json
+          if-no-files-found: error
       - if: runner.os == 'macOS'
         run: npm run tauri -- build --ci -- --locked
       - if: runner.os == 'macOS'

@@ -1,13 +1,14 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { copyFile, mkdtemp } from 'node:fs/promises'
+import { access, copyFile, mkdtemp, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
-const [electronExe, tauriExe] = process.argv.slice(2)
+const [electronExe, tauriExe, option] = process.argv.slice(2)
+const tauriReceipt = option === '--tauri-receipt'
 if (process.platform !== 'win32' || !electronExe || !tauriExe) {
-    throw new Error('Usage on Windows: node scripts/benchmark-launcher-windows.mjs ELECTRON_EXE TAURI_EXE')
+    throw new Error('Usage on Windows: node scripts/benchmark-launcher-windows.mjs ELECTRON_EXE TAURI_EXE [--tauri-receipt]')
 }
 
 const visibleLogin = `(() => {
@@ -17,6 +18,10 @@ const visibleLogin = `(() => {
     return Boolean(login?.getBoundingClientRect().height && loading
         && getComputedStyle(loading).display === 'none' && button && !button.disabled)
 })()`
+
+function running(child) {
+    return child.pid && child.exitCode === null && child.signalCode === null
+}
 
 async function reservePort() {
     const server = createServer()
@@ -30,7 +35,7 @@ async function reservePort() {
 }
 
 async function attach(port, pageMatches, child, deadline) {
-    while (performance.now() < deadline && child.exitCode === null) {
+    while (performance.now() < deadline && running(child)) {
         try {
             const response = await fetch('http://127.0.0.1:' + port + '/json/list', { signal: AbortSignal.timeout(500) })
             const page = (await response.json()).find(item => item.type === 'page' && pageMatches(item.url))
@@ -46,6 +51,44 @@ async function attach(port, pageMatches, child, deadline) {
         await sleep(25)
     }
     throw new Error('Could not attach to the benchmark window')
+}
+
+async function waitForLogin(ws, deadline) {
+    let sequence = 0
+    while (performance.now() < deadline) {
+        const requestId = ++sequence
+        const ready = await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('Debugger response timed out')), 3000)
+            function receive(event) {
+                const result = JSON.parse(event.data)
+                if (result.id !== requestId) return
+                clearTimeout(timer)
+                ws.removeEventListener('message', receive)
+                if (result.error) reject(new Error(result.error.message))
+                else resolve(result.result?.result?.value === true)
+            }
+            ws.addEventListener('message', receive)
+            ws.send(JSON.stringify({ id: requestId, method: 'Runtime.evaluate',
+                params: { expression: visibleLogin, returnByValue: true } }))
+        })
+        if (ready) return
+        await sleep(25)
+    }
+    throw new Error('The login screen did not finish loading')
+}
+
+async function waitForReceipt(profile, child, deadline) {
+    const receipt = path.join(profile, 'login-ready')
+    while (performance.now() < deadline && running(child)) {
+        try {
+            await access(receipt)
+            return
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error
+        }
+        await sleep(25)
+    }
+    throw new Error('Tauri did not report that the login screen rendered')
 }
 
 function processTree(root) {
@@ -65,8 +108,11 @@ function processTree(root) {
 
 async function measure(executable, mode) {
     const exe = path.resolve(executable)
-    const profile = await mkdtemp(path.join(tmpdir(), 'alice-benchmark-' + mode + '-'))
-    const port = await reservePort()
+    const temporary = path.resolve(tmpdir())
+    const prefix = 'alice-benchmark-' + mode + '-'
+    const profile = await mkdtemp(path.join(temporary, prefix))
+    const receipt = mode === 'tauri' && tauriReceipt
+    const port = receipt ? null : await reservePort()
     const env = { ...process.env }
     let args = []
     if (mode === 'electron') {
@@ -76,43 +122,27 @@ async function measure(executable, mode) {
     } else {
         Object.assign(env, {
             ALICE_TAURI_TEST_PROFILE: profile,
-            WEBVIEW2_USER_DATA_FOLDER: path.join(profile, 'webview'),
-            WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-address=127.0.0.1 --remote-debugging-port=' + port
+            WEBVIEW2_USER_DATA_FOLDER: path.join(profile, 'webview')
         })
+        if (receipt) env.ALICE_TAURI_VERIFY_LOGIN = '1'
+        else env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=' + port
     }
 
     const start = performance.now()
     const deadline = start + 20_000
-    const child = spawn(exe, args, { cwd: path.dirname(exe), env, stdio: 'ignore' })
+    const child = spawn(exe, args, { cwd: path.dirname(exe), env, stdio: 'ignore', windowsHide: true })
     const exited = new Promise(resolve => {
         child.once('exit', resolve)
         child.once('error', resolve)
     })
     let ws
-    let sequence = 0
     try {
-        ws = await attach(port, mode === 'electron' ? url => url.includes('/app.ejs')
-            : url => url.startsWith('http://tauri.localhost') || url.startsWith('https://tauri.localhost'), child, deadline)
-        let ready = false
-        while (performance.now() < deadline && !ready) {
-            const requestId = ++sequence
-            ready = await new Promise((resolve, reject) => {
-                const timer = setTimeout(() => reject(new Error('Debugger response timed out')), 3000)
-                function receive(event) {
-                    const result = JSON.parse(event.data)
-                    if (result.id !== requestId) return
-                    clearTimeout(timer)
-                    ws.removeEventListener('message', receive)
-                    if (result.error) reject(new Error(result.error.message))
-                    else resolve(result.result?.result?.value === true)
-                }
-                ws.addEventListener('message', receive)
-                ws.send(JSON.stringify({ id: requestId, method: 'Runtime.evaluate',
-                    params: { expression: visibleLogin, returnByValue: true } }))
-            })
-            if (!ready) await sleep(25)
+        if (receipt) await waitForReceipt(profile, child, deadline)
+        else {
+            ws = await attach(port, mode === 'electron' ? url => url.includes('/app.ejs')
+                : url => url.startsWith('http://tauri.localhost') || url.startsWith('https://tauri.localhost'), child, deadline)
+            await waitForLogin(ws, deadline)
         }
-        if (!ready) throw new Error('The login screen did not finish loading')
         const readyMs = Math.round(performance.now() - start)
 
         await sleep(2000)
@@ -138,11 +168,23 @@ async function measure(executable, mode) {
             const close = mode === 'electron'
                 ? { method: 'Browser.close' }
                 : { method: 'Runtime.evaluate', params: { expression: 'window.__TAURI__.window.getCurrentWindow().close()' } }
-            ws.send(JSON.stringify({ id: ++sequence, ...close }))
+            ws.send(JSON.stringify({ id: 0, ...close }))
             await Promise.race([exited, sleep(3000)])
         }
         ws?.close()
-        if (child.exitCode === null) child.kill()
+        if (running(child)) {
+            try {
+                execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+            } catch {
+                child.kill()
+            }
+            await Promise.race([exited, sleep(3000)])
+        }
+        if (path.dirname(profile) === temporary && path.basename(profile).startsWith(prefix)) {
+            await rm(profile, { recursive: true, force: true, maxRetries: 3 }).catch(() => {
+                console.error('Could not remove isolated benchmark profile ' + profile)
+            })
+        }
     }
 }
 
