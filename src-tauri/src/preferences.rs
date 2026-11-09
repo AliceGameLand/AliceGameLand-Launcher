@@ -149,9 +149,11 @@ impl Preferences {
         }
 
         let mut preferences = Self::default();
+        let mut imported_legacy = false;
         for legacy in [data_root.join(LEGACY_APP), data_root.join(".alicegameland")] {
             if let Some(imported) = read(&legacy.join("config.json"))? {
                 preferences = imported;
+                imported_legacy = true;
                 break;
             }
         }
@@ -160,6 +162,9 @@ impl Preferences {
             .launcher
             .data_directory
             .get_or_insert_with(|| data_root.join(".alicegameland"));
+        if !imported_legacy {
+            return Ok(preferences);
+        }
 
         let staged = preferences.stage(current)?;
         match staged.persist_noclobber(current) {
@@ -202,6 +207,28 @@ fn read(path: &Path) -> io::Result<Option<Preferences>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fresh_profile_saves_only_after_preferences_change() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("settings.json");
+        let mut preferences = Preferences::load(&path, root.path()).unwrap();
+        assert_eq!(
+            preferences.game_data_dir(),
+            Some(root.path().join(".alicegameland").as_path())
+        );
+        assert!(!path.exists());
+
+        preferences.selected_server = Some("alice".into());
+        preferences.save(&path).unwrap();
+        assert_eq!(
+            Preferences::load(&path, root.path())
+                .unwrap()
+                .selected_server
+                .as_deref(),
+            Some("alice")
+        );
+    }
 
     #[test]
     fn imports_game_settings_once_without_account_or_old_java_path() {

@@ -20,6 +20,7 @@ let needsServerSelection
 let activeServer
 let activeProfile
 let visibleView
+let homeInitialized = false
 let statusRequest = 0
 let selectedGameDirectory = null
 const javaSettings = createJavaSettings(document)
@@ -106,7 +107,17 @@ async function refreshServerStatus() {
 
 window.setInterval(refreshServerStatus, 5 * 60 * 1000)
 
-function showAuthenticated(profile) {
+async function showAuthenticated(profile) {
+    if (!homeInitialized) {
+        try {
+            await initializeHome()
+            homeInitialized = true
+        } catch (error) {
+            showView('loginOptionsContainer')
+            showError('런처 정보를 불러오지 못했어요', error, loginButton)
+            return
+        }
+    }
     activeProfile = profile
     byId('user_text').textContent = profile.name
     showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
@@ -533,7 +544,7 @@ function makeChoice(server, firstChoice = false) {
     return item
 }
 
-try {
+async function initializeHome() {
     const snapshot = await core.invoke('launcher_snapshot')
     const remembered = snapshot.servers.find(server => server.id === snapshot.selectedServer)
     const initial = remembered ?? snapshot.servers.find(server => server.mainServer) ?? snapshot.servers[0]
@@ -645,28 +656,26 @@ try {
             for (const button of homeList.children) button.disabled = false
         }
     })
-    loginButton.addEventListener('click', async () => {
-        loginButton.disabled = true
-        showView('waitingContainer')
-        try {
-            showAuthenticated(await core.invoke('microsoft_sign_in'))
-        } catch (error) {
-            showView('loginOptionsContainer')
-            showError('Microsoft 로그인', error, loginButton)
-        } finally {
-            loginButton.disabled = false
-        }
-    })
+}
 
+loginButton.addEventListener('click', async () => {
+    loginButton.disabled = true
+    showView('waitingContainer')
     try {
-        const profile = await core.invoke('account_profile')
-        if (profile) showAuthenticated(profile)
-        else showView('loginOptionsContainer')
+        await showAuthenticated(await core.invoke('microsoft_sign_in'))
     } catch (error) {
         showView('loginOptionsContainer')
-        showError('저장된 계정을 확인하지 못했어요', error, loginButton)
+        showError('Microsoft 로그인', error, loginButton)
+    } finally {
+        loginButton.disabled = false
     }
-} catch {
-    byId('loadingSubtitle').textContent = '런처 정보를 불러오지 못했습니다.'
-    document.body.classList.remove('launcher-starting')
+})
+
+try {
+    const profile = await core.invoke('account_profile')
+    if (profile) await showAuthenticated(profile)
+    else showView('loginOptionsContainer')
+} catch (error) {
+    showView('loginOptionsContainer')
+    showError('저장된 계정을 확인하지 못했어요', error, loginButton)
 }
