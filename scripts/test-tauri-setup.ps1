@@ -37,6 +37,9 @@ if ((Find-Preview 'HKEY_CURRENT_USER') -or (Find-Preview 'HKEY_LOCAL_MACHINE')) 
     throw 'Run this test on a machine without an existing Tauri preview installation.'
 }
 
+$legacyCache = Join-Path $env:LOCALAPPDATA 'alice-gameland-launcher-updater/installer.exe'
+$legacyBefore = (Get-FileHash -LiteralPath $legacyCache -ErrorAction SilentlyContinue).Hash
+
 foreach ($mode in $Scope) {
     $hive = if ($mode -eq 'allusers') { 'HKEY_LOCAL_MACHINE' } else { 'HKEY_CURRENT_USER' }
     $fixture = Join-Path ([IO.Path]::GetTempPath()) ('Alice Tauri setup test ' + [guid]::NewGuid().ToString('N'))
@@ -77,4 +80,8 @@ foreach ($mode in $Scope) {
     Remove-Item -LiteralPath $worker
     Remove-Item -LiteralPath $fixture
     Write-Output "$mode installation and removal passed ($hive)"
+}
+
+if ((Get-FileHash -LiteralPath $legacyCache -ErrorAction SilentlyContinue).Hash -ne $legacyBefore) {
+    throw 'The Tauri installer changed the Electron updater cache'
 }

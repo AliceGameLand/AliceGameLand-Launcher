@@ -43,6 +43,7 @@ try {
         config: {
             extends: null,
             appId: 'kr.dreamcraft.alicegameland.launcher.tauri-preview',
+            extraMetadata: { name: 'alice-gameland-tauri-preview' },
             productName: '앨리스의 게임랜드 Tauri 프리뷰',
             artifactName: 'alice-gameland-tauri-preview-${version}-setup.exe',
             directories: { output, buildResources: path.join(root, 'build') },
