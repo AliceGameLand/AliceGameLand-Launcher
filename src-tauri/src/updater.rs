@@ -15,6 +15,7 @@ const PREVIEW_FEED: &str = "https://github.com/AliceGameLand/AliceGameLand-Launc
 const MAX_PACKAGE: usize = 256 * 1024 * 1024;
 const UNAVAILABLE: &str = "이 빌드에서는 자동 업데이트를 사용할 수 없어요.";
 const CHECK_FAILED: &str = "업데이트를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.";
+const DOWNLOAD_FAILED: &str = "업데이트 파일을 받지 못했어요. 잠시 후 다시 시도해 주세요.";
 
 #[derive(Default)]
 pub struct Updates(Mutex<Option<Update>>);
@@ -154,8 +155,7 @@ pub async fn check_launcher_update(
 }
 
 async fn download(update: &Update, progress: Channel<Progress>) -> Result<Vec<u8>, String> {
-    let failure = "업데이트 파일을 받지 못했어요. 잠시 후 다시 시도해 주세요.";
-    let mut response = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(300))
@@ -167,33 +167,45 @@ async fn download(update: &Update, progress: Channel<Progress>) -> Result<Vec<u8
             }
         }))
         .build()
-        .map_err(|_| failure)?
-        .get(update.download_url.clone())
+        .map_err(|_| DOWNLOAD_FAILED)?;
+    read_package(&client, &update.download_url, |event| {
+        let _ = progress.send(event);
+    })
+    .await
+}
+
+async fn read_package(
+    client: &reqwest::Client,
+    url: &Url,
+    mut report: impl FnMut(Progress),
+) -> Result<Vec<u8>, String> {
+    let mut response = client
+        .get(url.clone())
         .send()
         .await
-        .map_err(|_| failure)?
+        .map_err(|_| DOWNLOAD_FAILED)?
         .error_for_status()
-        .map_err(|_| failure)?;
+        .map_err(|_| DOWNLOAD_FAILED)?;
     let total = response.content_length();
     if total.is_some_and(|size| size > MAX_PACKAGE as u64) {
         return Err("업데이트 파일이 너무 커요.".into());
     }
     let mut bytes = Vec::new();
     let mut next_report = 0;
-    while let Some(chunk) = response.chunk().await.map_err(|_| failure)? {
+    while let Some(chunk) = response.chunk().await.map_err(|_| DOWNLOAD_FAILED)? {
         if bytes.len() + chunk.len() > MAX_PACKAGE {
             return Err("업데이트 파일이 너무 커요.".into());
         }
         bytes.extend_from_slice(&chunk);
         if bytes.len() >= next_report {
-            let _ = progress.send(Progress {
+            report(Progress {
                 received: bytes.len() as u64,
                 total,
             });
             next_report = bytes.len() + 256 * 1024;
         }
     }
-    let _ = progress.send(Progress {
+    report(Progress {
         received: bytes.len() as u64,
         total,
     });
@@ -293,6 +305,10 @@ mod tests {
     fn signed_update_accepts_only_matching_package_and_version() {
         use serde::Deserialize;
         use std::{fs, path::PathBuf};
+        use tokio::{
+            io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+            net::TcpListener,
+        };
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -306,44 +322,96 @@ mod tests {
         }
 
         let root = PathBuf::from(std::env::var_os("ALICE_TAURI_TEST_UPDATE").unwrap());
-        let fixture: Fixture =
+        let mut fixture: Fixture =
             serde_json::from_slice(&fs::read(root.join("fixture.json")).unwrap()).unwrap();
         let mut context = tauri::test::mock_context(tauri::test::noop_assets());
         context.config_mut().plugins.0.insert(
             "updater".into(),
-            serde_json::json!({ "pubkey": fixture.public_key, "requireSignedVersion": true }),
+            serde_json::json!({
+                "pubkey": fixture.public_key,
+                "requireSignedVersion": true,
+                "dangerousInsecureTransportProtocol": true
+            }),
         );
         let app = tauri::test::mock_builder()
             .plugin(tauri_plugin_updater::Builder::new().build())
             .build(context)
             .unwrap();
-        let updater = app
-            .updater_builder()
-            .executable_path(&fixture.executable)
-            .endpoints(vec![Url::parse(STABLE_FEED).unwrap()])
-            .unwrap()
-            .build()
+        tauri::async_runtime::block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            for target in fixture.manifest["platforms"]
+                .as_object_mut()
+                .unwrap()
+                .values_mut()
+            {
+                target["url"] = serde_json::json!(format!("{origin}/package"));
+            }
+            let manifest = serde_json::to_vec(&fixture.manifest).unwrap();
+            let package = fs::read(&fixture.payload).unwrap();
+            let package_size = package.len();
+            let server = tokio::spawn(async move {
+                for (route, payload, content_type) in [
+                    ("/feed", manifest, "application/json"),
+                    ("/package", package, "application/octet-stream"),
+                ] {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let mut reader = BufReader::new(&mut stream);
+                    let mut line = String::new();
+                    reader.read_line(&mut line).await.unwrap();
+                    assert!(line.starts_with(&format!("GET {route} ")));
+                    loop {
+                        line.clear();
+                        reader.read_line(&mut line).await.unwrap();
+                        if line == "\r\n" {
+                            break;
+                        }
+                        assert!(!line.is_empty());
+                    }
+                    let headers = format!("HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n", payload.len());
+                    stream.write_all(headers.as_bytes()).await.unwrap();
+                    stream.write_all(&payload).await.unwrap();
+                }
+            });
+            let updater = app
+                .updater_builder()
+                .executable_path(&fixture.executable)
+                .endpoints(vec![Url::parse(&format!("{origin}/feed")).unwrap()])
+                .unwrap()
+                .no_proxy()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap();
+            let update = updater.check().await.unwrap().unwrap();
+            let client = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap();
+            let mut received = 0;
+            let mut bytes = read_package(&client, &update.download_url, |event| {
+                received = event.received
+            })
+            .await
             .unwrap();
-        let update = updater
-            .restore_update(fixture.manifest.clone())
-            .unwrap()
-            .unwrap();
-        let mut bytes = fs::read(fixture.payload).unwrap();
-        update.verify(&bytes).unwrap();
-        bytes[0] ^= 1;
-        assert!(update.verify(&bytes).is_err());
-        bytes[0] ^= 1;
-        let mut relabeled = fixture.manifest;
-        relabeled["version"] = serde_json::json!("999.0.0");
-        let wrong_version = updater.restore_update(relabeled).unwrap().unwrap();
-        assert!(wrong_version.verify(&bytes).is_err());
-        #[cfg(target_os = "macos")]
-        {
-            update.install(bytes).unwrap();
-            assert_eq!(
-                fs::read(fixture.executable).unwrap(),
-                fs::read(fixture.expected).unwrap()
-            );
-        }
+            server.await.unwrap();
+            assert_eq!(received, package_size as u64);
+            update.verify(&bytes).unwrap();
+            bytes[0] ^= 1;
+            assert!(update.verify(&bytes).is_err());
+            bytes[0] ^= 1;
+            let mut relabeled = fixture.manifest;
+            relabeled["version"] = serde_json::json!("999.0.0");
+            let wrong_version = updater.restore_update(relabeled).unwrap().unwrap();
+            assert!(wrong_version.verify(&bytes).is_err());
+            #[cfg(target_os = "macos")]
+            {
+                update.install(bytes).unwrap();
+                assert_eq!(
+                    fs::read(fixture.executable).unwrap(),
+                    fs::read(fixture.expected).unwrap()
+                );
+            }
+        });
     }
 }
