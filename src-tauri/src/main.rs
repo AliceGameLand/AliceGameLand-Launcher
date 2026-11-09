@@ -16,7 +16,7 @@ mod status;
 #[cfg(windows)]
 mod wizard;
 
-use std::{path::PathBuf, sync::Mutex};
+use std::{io::Write, path::PathBuf, sync::Mutex};
 
 use distribution::{Distribution, Server};
 use preferences::{heap_megabytes, GameSettings, JavaOptions, Preferences, Settings};
@@ -28,6 +28,7 @@ struct Launcher {
     servers: Vec<Server>,
     preferences_path: PathBuf,
     preferences: Mutex<Preferences>,
+    login_receipt: Option<PathBuf>,
 }
 
 impl Launcher {
@@ -58,6 +59,20 @@ struct Snapshot {
     version: String,
     servers: Vec<Server>,
     selected_server: Option<String>,
+}
+
+#[tauri::command]
+fn test_login_ready(launcher: State<'_, Launcher>) -> Result<(), String> {
+    let path = launcher
+        .login_receipt
+        .as_ref()
+        .ok_or("Login verification is disabled")?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .and_then(|mut receipt| receipt.write_all(b"ready\n"))
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -374,6 +389,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let test_profile = test_profile()?;
+            let login_receipt = test_profile
+                .as_ref()
+                .filter(|_| std::env::var_os("ALICE_TAURI_VERIFY_LOGIN").is_some())
+                .map(|profile| profile.join("login-ready"));
+            let verify_login = login_receipt.is_some();
             let (profile, data_root) = match test_profile {
                 Some(path) => (path.clone(), path),
                 None => (app.path().app_data_dir()?, app.path().data_dir()?),
@@ -386,12 +406,19 @@ fn main() {
                 servers: distribution.servers,
                 preferences_path,
                 preferences: Mutex::new(preferences),
+                login_receipt,
             });
-            tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?.build()?;
+            let mut window =
+                tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            if verify_login {
+                window = window.initialization_script(include_str!("test_login_ready.js"));
+            }
+            window.build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             launcher_snapshot,
+            test_login_ready,
             select_server,
             server_status,
             about::authentication_status,

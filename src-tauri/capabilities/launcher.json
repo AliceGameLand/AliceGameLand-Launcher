@@ -8,6 +8,7 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "allow-launcher-snapshot",
+    "allow-test-login-ready",
     "allow-select-server",
     "allow-server-status",
     "allow-authentication-status",

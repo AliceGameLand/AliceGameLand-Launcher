@@ -38,7 +38,24 @@ jobs:
         run: npm run tauri -- build --ci --no-bundle -- --locked
       - name: Verify the Windows login screen
         if: runner.os == 'Windows'
-        run: node scripts/benchmark-launcher-windows.mjs --smoke src-tauri/target/release/alice-gameland.exe
+        run: |
+          $profile = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "alice-startup-$([guid]::NewGuid())")
+          $env:ALICE_TAURI_TEST_PROFILE = $profile.FullName
+          $env:ALICE_TAURI_VERIFY_LOGIN = '1'
+          $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $profile.FullName 'webview'
+          $launcher = Start-Process -FilePath 'src-tauri/target/release/alice-gameland.exe' -WindowStyle Hidden -PassThru
+          try {
+            $receipt = Join-Path $profile.FullName 'login-ready'
+            for ($attempt = 0; $attempt -lt 40; $attempt++) {
+              if (Test-Path -LiteralPath $receipt) { break }
+              if ($launcher.HasExited) { throw "Launcher exited with code $($launcher.ExitCode)" }
+              Start-Sleep -Milliseconds 500
+            }
+            if (!(Test-Path -LiteralPath $receipt)) { throw 'Launcher did not render the login screen' }
+            Write-Output 'Windows login screen rendered'
+          } finally {
+            if (!$launcher.HasExited) { Stop-Process -Id $launcher.Id }
+          }
       - if: runner.os == 'Windows'
         uses: actions/upload-artifact@v6
         with:
@@ -68,17 +85,18 @@ jobs:
           launcher="$app/Contents/MacOS/$executable"
           test "$(lipo -archs "$launcher")" = arm64
           printf '%s\n' '{"settings":{"game":{"fullscreen":true}},"authenticationDatabase":{"fixture":true}}' > "$profile/앨리스의 게임랜드/config.json"
-          ALICE_TAURI_TEST_PROFILE="$profile" "$launcher" > "$profile/startup.log" 2>&1 &
+          ALICE_TAURI_TEST_PROFILE="$profile" ALICE_TAURI_VERIFY_LOGIN=1 "$launcher" > "$profile/startup.log" 2>&1 &
           pid=$!
-          for attempt in {1..20}; do
-            test -s "$profile/preferences.json" && break
+          for attempt in {1..40}; do
+            test -s "$profile/login-ready" && break
             kill -0 "$pid" 2>/dev/null || { cat "$profile/startup.log"; exit 1; }
             sleep 0.5
           done
+          test -s "$profile/login-ready" || { cat "$profile/startup.log"; exit 1; }
           sleep 2
           kill -0 "$pid" 2>/dev/null || { cat "$profile/startup.log"; exit 1; }
           node -e 'const assert = require("node:assert/strict"); const data = require(process.argv[1]); assert.equal(data.settings.game.fullscreen, true); assert.equal(data.authenticationDatabase, undefined)' "$profile/preferences.json"
-          echo "Packaged launcher started on $(uname -m) and imported legacy preferences"
+          echo "Packaged launcher rendered the login screen on $(uname -m) and imported legacy preferences"
       - uses: actions/upload-artifact@v6
         with:
           name: tauri-${{ matrix.platform }}

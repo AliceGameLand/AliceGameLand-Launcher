@@ -2,6 +2,7 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "launcher_snapshot",
+            "test_login_ready",
             "select_server",
             "server_status",
             "authentication_status",

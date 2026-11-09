@@ -6,9 +6,8 @@ import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const [electronExe, tauriExe] = process.argv.slice(2)
-const smokeOnly = electronExe === '--smoke'
 if (process.platform !== 'win32' || !electronExe || !tauriExe) {
-    throw new Error('Usage on Windows: node scripts/benchmark-launcher-windows.mjs ELECTRON_EXE|--smoke TAURI_EXE')
+    throw new Error('Usage on Windows: node scripts/benchmark-launcher-windows.mjs ELECTRON_EXE TAURI_EXE')
 }
 
 const visibleLogin = `(() => {
@@ -115,7 +114,6 @@ async function measure(executable, mode) {
         }
         if (!ready) throw new Error('The login screen did not finish loading')
         const readyMs = Math.round(performance.now() - start)
-        if (smokeOnly) return { readyMs }
 
         await sleep(2000)
         const first = processTree(child.pid)
@@ -148,15 +146,10 @@ async function measure(executable, mode) {
     }
 }
 
-if (smokeOnly) {
-    const { readyMs } = await measure(tauriExe, 'tauri')
-    console.log(`Tauri login screen visible after ${readyMs} ms`)
-} else {
-    const results = { electron: [], tauri: [] }
-    for (let trial = 0; trial < 5; trial++) {
-        const order = trial % 2 ? [['tauri', tauriExe], ['electron', electronExe]]
-            : [['electron', electronExe], ['tauri', tauriExe]]
-        for (const [mode, exe] of order) results[mode].push(await measure(exe, mode))
-    }
-    console.log(JSON.stringify(results, null, 2))
+const results = { electron: [], tauri: [] }
+for (let trial = 0; trial < 5; trial++) {
+    const order = trial % 2 ? [['tauri', tauriExe], ['electron', electronExe]]
+        : [['electron', electronExe], ['tauri', tauriExe]]
+    for (const [mode, exe] of order) results[mode].push(await measure(exe, mode))
 }
+console.log(JSON.stringify(results, null, 2))
