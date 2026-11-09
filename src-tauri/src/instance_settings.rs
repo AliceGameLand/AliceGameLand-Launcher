@@ -1,7 +1,8 @@
 use std::{
     collections::BTreeSet,
     ffi::OsStr,
-    fs, io,
+    fs,
+    io::{self, Write},
     path::{Path, PathBuf},
 };
 
@@ -32,11 +33,17 @@ struct LocalMod {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModSettings {
     required: Vec<String>,
     local: Vec<LocalMod>,
     shaders: Vec<String>,
+    selected_shader: Option<String>,
+    shader_config_ready: bool,
 }
+
+const SHADER_OVERRIDE: &[u8] = b"\n\n# AliceGameLand launcher shader selection\n";
+const IRIS_CONFIG_LIMIT: u64 = 64 * 1024;
 
 fn mod_file(path: &Path) -> bool {
     path.extension()
@@ -101,14 +108,27 @@ impl ModSettings {
                 &mut local,
             )?;
         }
-        let shaders = filenames(&instance.join("shaderpacks"))?
-            .into_iter()
-            .filter(|name| name.to_ascii_lowercase().ends_with(".zip"))
-            .collect();
+        let shaders = shader_files(instance)?;
+        let config = iris_config(instance)?;
+        let selected_shader = config
+            .as_deref()
+            .map(javaproperties::Properties::parse)
+            .transpose()?
+            .and_then(|settings| {
+                if settings.get("enableShaders") == Some("false") {
+                    return None;
+                }
+                settings
+                    .get("shaderPack")
+                    .filter(|pack| !pack.is_empty())
+                    .map(str::to_owned)
+            });
         Ok(Self {
             required: required.into_iter().collect(),
             local,
             shaders,
+            selected_shader,
+            shader_config_ready: config.is_some(),
         })
     }
 }
@@ -129,6 +149,76 @@ fn scan_local(
             });
         }
     }
+    Ok(())
+}
+
+fn shader_files(instance: &Path) -> io::Result<Vec<String>> {
+    Ok(filenames(&instance.join("shaderpacks"))?
+        .into_iter()
+        .filter(|name| name.to_ascii_lowercase().ends_with(".zip"))
+        .collect())
+}
+
+fn iris_config(instance: &Path) -> artifacts::Result<Option<Vec<u8>>> {
+    let path = instance.join("config/iris.properties");
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_file()
+        || metadata.len() > IRIS_CONFIG_LIMIT
+        || !path.canonicalize()?.starts_with(instance.canonicalize()?)
+    {
+        return Err("Invalid Iris settings file".into());
+    }
+    Ok(Some(fs::read(path)?))
+}
+
+pub fn select_shader(instance: &Path, shader: Option<&str>) -> artifacts::Result<()> {
+    if let Some(shader) = shader {
+        if !shader_files(instance)?.iter().any(|name| name == shader) {
+            return Err("선택한 셰이더팩을 찾지 못했어요.".into());
+        }
+    }
+    let original =
+        iris_config(instance)?.ok_or("게임을 한 번 실행한 뒤 셰이더를 설정해 주세요.")?;
+    let settings = javaproperties::Properties::parse(&original)?;
+    let pack = shader
+        .or_else(|| settings.get("shaderPack"))
+        .unwrap_or_default();
+    let enabled = if shader.is_some() { "true" } else { "false" };
+    // Java properties use the last value for a key. Only replace our own trailing override.
+    let suffix = original
+        .windows(SHADER_OVERRIDE.len())
+        .rposition(|bytes| bytes == SHADER_OVERRIDE);
+    let mut base = original.as_slice();
+    if let Some(position) = suffix {
+        let tail = &original[position + SHADER_OVERRIDE.len()..];
+        let lines: Vec<_> = tail.split(|&byte| byte == b'\n').collect();
+        if matches!(lines.as_slice(), [enabled, pack, rest] if enabled.starts_with(b"enableShaders=") && pack.starts_with(b"shaderPack=") && rest.is_empty())
+        {
+            base = &original[..position];
+        }
+    }
+    let config = instance.join("config");
+    let mut stage = tempfile::NamedTempFile::new_in(&config)?;
+    stage.write_all(base)?;
+    stage.write_all(SHADER_OVERRIDE)?;
+    writeln!(stage, "enableShaders={enabled}")?;
+    writeln!(
+        stage,
+        "{}",
+        javaproperties::join_key_value("shaderPack", pack, "=")
+    )?;
+    if stage.as_file().metadata()?.len() > IRIS_CONFIG_LIMIT {
+        return Err("Iris settings file exceeds its size limit".into());
+    }
+    stage.as_file().sync_all()?;
+    if iris_config(instance)?.as_deref() != Some(original.as_slice()) {
+        return Err("Iris settings changed while saving".into());
+    }
+    stage.persist(config.join("iris.properties"))?;
     Ok(())
 }
 
@@ -170,5 +260,46 @@ mod tests {
         assert!(settings.local[0].enabled);
         assert!(!settings.local[1].enabled);
         assert_eq!(settings.shaders, ["Pack.zip"]);
+        assert!(!settings.shader_config_ready);
+        assert!(select_shader(instance, Some("Pack.zip")).is_err());
+        assert!(!instance.join("config/iris.properties").exists());
+    }
+
+    #[test]
+    fn saves_shader_selection_without_altering_existing_iris_properties() {
+        let root = tempfile::tempdir().unwrap();
+        let instance = root.path();
+        fs::create_dir_all(instance.join("config")).unwrap();
+        fs::create_dir_all(instance.join("shaderpacks")).unwrap();
+        let config = instance.join("config/iris.properties");
+        let original = b"# user configuration\r\nshaderPack=old.zip\r\nenableShaders=true\r\nmaxShadowRenderDistance=24";
+        fs::write(&config, original).unwrap();
+        let pack = "한글 🌙.zip";
+        fs::write(instance.join("shaderpacks").join(pack), []).unwrap();
+        select_shader(instance, Some(pack)).unwrap();
+        let updated = fs::read(&config).unwrap();
+        assert!(updated.starts_with(original));
+        assert_eq!(
+            javaproperties::Properties::parse(&updated)
+                .unwrap()
+                .get("shaderPack"),
+            Some(pack)
+        );
+        select_shader(instance, None).unwrap();
+        let disabled = fs::read(&config).unwrap();
+        assert!(disabled.starts_with(original));
+        assert_eq!(
+            disabled
+                .windows(SHADER_OVERRIDE.len())
+                .filter(|bytes| *bytes == SHADER_OVERRIDE)
+                .count(),
+            1
+        );
+        let props = javaproperties::Properties::parse(&disabled).unwrap();
+        assert_eq!(props.get("enableShaders"), Some("false"));
+        assert_eq!(props.get("maxShadowRenderDistance"), Some("24"));
+        assert_eq!(props.get("shaderPack"), Some(pack));
+        assert!(select_shader(instance, Some("../missing.zip")).is_err());
+        assert_eq!(fs::read(config).unwrap(), disabled);
     }
 }

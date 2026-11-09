@@ -25,6 +25,7 @@ dependencies = [
  "flate2",
  "getrandom 0.3.4",
  "hickory-resolver",
+ "javaproperties",
  "keyring",
  "md-5",
  "open",
@@ -1730,6 +1731,15 @@ name = "itoa"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
+
+[[package]]
+name = "javaproperties"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cb8b7000b336428bc45be1f3c54917c4fe63b42d11c9cff135cfe9dd71f2cfd"
+dependencies = [
+ "xmlkit",
+]
 
 [[package]]
 name = "javascriptcore-rs"
@@ -5221,6 +5231,12 @@ dependencies = [
  "libc",
  "rustix",
 ]
+
+[[package]]
+name = "xmlkit"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b48e534bc827a6ed86fd753ce98e00da4c6c1ebfb98f8c7f9b4b699f72570465"
 
 [[package]]
 name = "yoke"

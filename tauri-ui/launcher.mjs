@@ -146,13 +146,16 @@ function bindMods(settingsDone) {
     const required = byId('settingsReqModsContent')
     const local = byId('settingsDropinModsContent')
     const shaderNote = byId('settingsShaderpackDesc')
+    const shaderSelect = byId('settingsShadersSelect')
     const inventory = byId('settingsModsContainer')
     let request = 0
+    let savedShader = ''
+    let savingShader = false
     function visible() {
         return visibleView === 'settingsContainer' && tab.hasAttribute('selected')
     }
     async function refresh() {
-        if (!visible()) return
+        if (!visible() || savingShader) return
         const refreshId = ++request
         modsPanel.querySelector('.settingsSelServContent').textContent = activeServer.name
         inventory.setAttribute('aria-busy', 'true')
@@ -161,16 +164,41 @@ function bindMods(settingsDone) {
             if (refreshId !== request || !visible()) return
             required.replaceChildren(...mods.required.map(name => modRow(name, true, '항상 켜짐')))
             local.replaceChildren(...mods.local.map(({ name, enabled }) => modRow(name, enabled, enabled ? '켜짐' : '꺼짐')))
-            shaderNote.textContent = mods.shaders.length
-                ? '설치된 셰이더팩 · ' + mods.shaders.join(', ')
-                : '설치된 셰이더팩이 없어요.'
+            savedShader = mods.selectedShader ?? ''
+            const options = [new window.Option('끄기', ''), ...mods.shaders.map(name => new window.Option(name, name))]
+            if (savedShader && !mods.shaders.includes(savedShader)) {
+                const missing = new window.Option(savedShader + ' · 파일 없음', savedShader)
+                missing.disabled = true
+                options.push(missing)
+            }
+            shaderSelect.replaceChildren(...options)
+            shaderSelect.value = savedShader
+            shaderSelect.disabled = !mods.shaderConfigReady
+            shaderNote.textContent = mods.shaderConfigReady
+                ? '셰이더 선택은 이 서버의 Iris 설정에 바로 저장돼요.'
+                : '게임을 한 번 실행한 뒤 셰이더를 바꿀 수 있어요.'
         } catch (error) {
             if (refreshId === request && visible()) showError('모드 설정을 열지 못했어요', error, tab)
         } finally {
             if (refreshId === request) inventory.removeAttribute('aria-busy')
         }
     }
-    byId('settingsShadersSelect').hidden = true
+    shaderSelect.disabled = true
+    shaderSelect.addEventListener('change', async () => {
+        const shader = shaderSelect.value
+        savingShader = true
+        shaderSelect.disabled = true
+        try {
+            await core.invoke('select_shaderpack', { serverId: activeServer.id, shader: shader || null })
+            savedShader = shader
+        } catch (error) {
+            shaderSelect.value = savedShader
+            showError('셰이더를 변경하지 못했어요', error, shaderSelect)
+        } finally {
+            savingShader = false
+            shaderSelect.disabled = false
+        }
+    })
     tab.addEventListener('click', refresh)
     window.addEventListener('focus', refresh)
     document.addEventListener('keydown', event => {

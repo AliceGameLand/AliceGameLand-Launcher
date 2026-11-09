@@ -14,6 +14,7 @@ fn main() {
             "open_game_folder",
             "mod_settings",
             "open_instance_folder",
+            "select_shaderpack",
             "microsoft_sign_out",
             "account_profile",
             "microsoft_sign_in",

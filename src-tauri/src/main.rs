@@ -280,6 +280,17 @@ fn open_instance_folder(
     open_folder(instance.join(folder.name()))
 }
 
+#[tauri::command]
+fn select_shaderpack(
+    server_id: String,
+    shader: Option<String>,
+    launcher: State<'_, Launcher>,
+) -> Result<(), String> {
+    let (_, instance) = launcher.instance(&server_id)?;
+    instance_settings::select_shader(&instance, shader.as_deref())
+        .map_err(|_| "Iris 셰이더 설정을 저장하지 못했어요.".into())
+}
+
 fn open_folder(path: PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(&path).map_err(|_| "게임 데이터 폴더를 만들지 못했어요.")?;
     let opener = if cfg!(windows) {
@@ -393,6 +404,7 @@ fn main() {
             open_game_folder,
             mod_settings,
             open_instance_folder,
+            select_shaderpack,
             auth::microsoft_sign_out,
             auth::account_profile,
             auth::microsoft_sign_in
