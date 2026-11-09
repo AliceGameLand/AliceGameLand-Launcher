@@ -16,11 +16,15 @@ use tauri::{ipc::Channel, Manager, State, WebviewUrl, WebviewWindow, WebviewWind
 use windows::{
     core::{w, HRESULT, PCWSTR},
     Win32::{
-        Foundation::{CloseHandle, ERROR_CANCELLED, HWND, WAIT_OBJECT_0},
+        Foundation::{CloseHandle, ERROR_CANCELLED, ERROR_SUCCESS, HWND, WAIT_OBJECT_0},
         System::{
             Com::{
                 CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
                 CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+            },
+            Registry::{
+                RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
+                RRF_SUBKEY_WOW6464KEY,
             },
             Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE},
         },
@@ -36,11 +40,12 @@ use windows::{
 
 const FOLDER: &str = "alice-gameland-tauri-preview";
 const LAUNCHER: &str = "AliceGameLand-Tauri.exe";
+const INSTALL_KEY: PCWSTR = w!(r"Software\69bd89cc-35ff-5408-9b98-972ba4fb446c");
 const INVALID_PATH: &str = "설치할 폴더를 다시 선택해 주세요.";
 const RUNNING: &str = "실행 중인 런처를 닫은 뒤 다시 시도해 주세요.";
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Scope {
     User,
@@ -104,6 +109,7 @@ impl Mode {
 
 struct Wizard {
     mode: Mode,
+    update_target: Option<UpdateTarget>,
     busy: AtomicBool,
     installed: Mutex<Option<PathBuf>>,
 }
@@ -132,10 +138,50 @@ struct Defaults {
     all: PathBuf,
 }
 
+#[derive(Clone, Eq, PartialEq, Serialize)]
+struct UpdateTarget {
+    destination: PathBuf,
+    mode: Scope,
+}
+
+fn update_target() -> Option<UpdateTarget> {
+    [Scope::User, Scope::All].into_iter().find_map(|mode| {
+        let hive = match mode {
+            Scope::User => HKEY_CURRENT_USER,
+            Scope::All => HKEY_LOCAL_MACHINE,
+        };
+        let mut value = [0u16; 201];
+        let mut bytes = std::mem::size_of_val(&value) as u32;
+        let status = unsafe {
+            RegGetValueW(
+                hive,
+                INSTALL_KEY,
+                w!("InstallLocation"),
+                RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
+                None,
+                Some(value.as_mut_ptr().cast()),
+                Some(&mut bytes),
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return None;
+        }
+        let end = value.iter().position(|&unit| unit == 0)?;
+        let value = String::from_utf16(&value[..end]).ok()?;
+        let destination = directory(&value).ok()?;
+        destination
+            .join(LAUNCHER)
+            .is_file()
+            .then_some(UpdateTarget { destination, mode })
+    })
+}
+
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Info {
     version: String,
     defaults: Option<Defaults>,
+    update_target: Option<UpdateTarget>,
 }
 
 #[tauri::command]
@@ -153,6 +199,7 @@ fn wizard_info(app: tauri::AppHandle, state: State<'_, Wizard>) -> Result<Info, 
     Ok(Info {
         version: app.package_info().version.to_string(),
         defaults,
+        update_target: state.update_target.clone(),
     })
 }
 
@@ -396,31 +443,42 @@ impl Outcome {
 fn install(
     backend: &Path,
     options: Options,
+    update: Option<UpdateTarget>,
     progress: Channel<Progress>,
 ) -> Result<PathBuf, String> {
-    let target = destination(&options.destination)?;
-    match fs::read_dir(&target) {
-        Ok(mut entries) => {
-            if entries.next().is_some() {
-                return Err("설치 위치에 파일이 있어요. 비어 있는 폴더를 선택해 주세요.".into());
-            }
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(_) => return Err(INVALID_PATH.into()),
+    if update != update_target() {
+        return Err("기존 설치 위치가 바뀌었어요. 설치 파일을 다시 실행해 주세요.".into());
     }
+    let updating = update.is_some();
+    let (target, mode) = if let Some(update) = update {
+        (update.destination, update.mode)
+    } else {
+        let target = destination(&options.destination)?;
+        match fs::read_dir(&target) {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    return Err("설치 위치에 파일이 있어요. 비어 있는 폴더를 선택해 주세요.".into());
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(_) => return Err(INVALID_PATH.into()),
+        }
+        (target, options.mode)
+    };
     let _ = progress.send(Progress {
         phase: "checking",
         percent: Some(100),
         mode: None,
     });
-    let machine = matches!(options.mode, Scope::All);
+    let machine = matches!(mode, Scope::All);
     let _ = progress.send(Progress {
         phase: "installing",
         percent: None,
         mode: Some(if machine { "all" } else { "user" }),
     });
     // NSIS reads everything after /D= as the path. It has to be last and unquoted.
-    let args = format!("/S {} /D={}", options.mode.flag(), target.display());
+    let updated_flag = if updating { " --updated" } else { "" };
+    let args = format!("/S{updated_flag} {} /D={}", mode.flag(), target.display());
     run_worker(backend, &args, machine)?;
     if !target.join(LAUNCHER).is_file() {
         return Err("설치한 런처를 찾지 못했어요.".into());
@@ -439,10 +497,12 @@ async fn wizard_install(
     };
     let _operation = Operation::start(&state.busy)?;
     let backend = backend.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || install(&backend, options, progress))
-        .await
-        .map_err(|_| "설치 작업이 중단됐어요.")?
-        .map(Some);
+    let update = state.update_target.clone();
+    let result =
+        tauri::async_runtime::spawn_blocking(move || install(&backend, options, update, progress))
+            .await
+            .map_err(|_| "설치 작업이 중단됐어요.")?
+            .map(Some);
     if let Ok(installed) = &result {
         *state
             .installed
@@ -511,9 +571,13 @@ pub fn run(context: tauri::Context<tauri::Wry>, mode: Mode) {
             false,
         ),
     };
+    let update_target = matches!(&mode, Mode::Install { .. })
+        .then(update_target)
+        .flatten();
     let result = tauri::Builder::default()
         .manage(Wizard {
             mode,
+            update_target,
             busy: AtomicBool::new(false),
             installed: Mutex::new(None),
         })

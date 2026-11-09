@@ -57,8 +57,13 @@ foreach ($mode in $Scope) {
         throw "$mode did not register the preview in $hive"
     }
     $userFile = Join-Path $root 'user-settings.txt'
-    if ($mode -eq 'allusers') {
-        Set-Content -LiteralPath $userFile -Value 'keep'
+    Set-Content -LiteralPath $userFile -Value 'keep'
+    if ($mode -eq 'currentuser') {
+        Invoke-NsisWorker $installerPath "/S --updated /$mode /D=$root" $fixture
+        if ((Get-Content -LiteralPath $userFile) -ne 'keep' -or !(Find-Preview $hive)) {
+            throw 'Updating the existing installation did not preserve its state'
+        }
+        Remove-Item -LiteralPath $userFile
     }
 
     # The UI also runs a temporary copy, so the registered uninstaller can be deleted.
