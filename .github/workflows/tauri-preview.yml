@@ -193,13 +193,15 @@ jobs:
             local app
             app=$(find "$mount" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print -quit)
             test -d "$app"
-            ditto "$app" "$2"
+            mkdir -p "$2"
+            installed_app="$2/$(basename "$app")"
+            ditto "$app" "$installed_app"
             hdiutil detach "$mount"
           }
-          electron_app="$reference/Electron.app"
-          tauri_app="$reference/Tauri.app"
-          install_app "$electron_dmg" "$electron_app"
-          install_app "$tauri_dmg" "$tauri_app"
+          install_app "$electron_dmg" "$reference/installed-electron"
+          electron_app="$installed_app"
+          install_app "$tauri_dmg" "$reference/installed-tauri"
+          tauri_app="$installed_app"
           executable() {
             /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$1/Contents/Info.plist"
           }
@@ -207,6 +209,7 @@ jobs:
           tauri="$tauri_app/Contents/MacOS/$(executable "$tauri_app")"
           test "$(lipo -archs "$electron")" = arm64
           test "$(lipo -archs "$tauri")" = arm64
+          codesign --verify --deep --strict "$electron_app" || echo '::warning::Electron reference signature verification failed'
           node scripts/benchmark-launcher.mjs "$electron" "$tauri" > "$reference/startup.json"
           node -e 'const fs = require("node:fs"); const [startup, electron, tauri] = process.argv.slice(1); const result = JSON.parse(fs.readFileSync(startup)); result.installerBytes = { electron: fs.statSync(electron).size, tauri: fs.statSync(tauri).size }; console.log(JSON.stringify(result, null, 2))' "$reference/startup.json" "$electron_dmg" "$tauri_dmg" > dist/benchmark-macos.json
       - name: Upload the Apple Silicon comparison

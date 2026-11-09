@@ -120,6 +120,7 @@ async function measure(executable, mode) {
         await copyFile(new URL('../app/assets/distribution.json', import.meta.url), path.join(profile, 'distribution_dev.json'))
         Object.assign(env, { ALICE_LOCAL_DISTRIBUTION: '1', ALICE_LOCAL_PROFILE: profile, ELECTRON_IS_DEV: '1' })
         args = ['--remote-debugging-address=127.0.0.1', '--remote-debugging-port=' + port]
+        if (!windows) args.push('--enable-logging=stderr')
     } else {
         Object.assign(env, {
             ALICE_TAURI_TEST_PROFILE: profile,
@@ -133,13 +134,18 @@ async function measure(executable, mode) {
     const deadline = start + 20_000
     const child = spawn(exe, args, { cwd: path.dirname(exe), env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true })
     let stderr = ''
-    child.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-8192) })
+    child.stderr?.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-8192) })
+    const spawned = new Promise((resolve, reject) => {
+        child.once('spawn', resolve)
+        child.once('error', reject)
+    })
     const exited = new Promise(resolve => {
         child.once('exit', resolve)
         child.once('error', resolve)
     })
     let ws
     try {
+        await spawned
         if (receipt) await waitForReceipt(profile, child, deadline)
         else {
             ws = await attach(port, mode === 'electron' ? url => url.includes('/app.ejs')
@@ -170,7 +176,8 @@ async function measure(executable, mode) {
         return { readyMs, workingSetBytes, idleCpuPercentOfOneCore: 100 * cpuTime / (10_000 * idleMs), processCount: last.size }
     } catch (error) {
         if (stderr) console.error(stderr)
-        throw new Error(`${mode} launcher benchmark failed: ${error.message}`, { cause: error })
+        const exit = child.signalCode ?? child.exitCode
+        throw new Error(`${mode} launcher benchmark failed: ${error.message}${exit === null ? '' : ` (exit ${exit})`}`, { cause: error })
     } finally {
         if (ws?.readyState === globalThis.WebSocket.OPEN) {
             const close = mode === 'electron'
@@ -204,6 +211,15 @@ const results = { electron: [], tauri: [] }
 for (let trial = 0; trial < 5; trial++) {
     const order = trial % 2 ? [['tauri', tauriExe], ['electron', electronExe]]
         : [['electron', electronExe], ['tauri', tauriExe]]
-    for (const [mode, exe] of order) results[mode].push(await measure(exe, mode))
+    for (const [mode, exe] of order) {
+        if (mode === 'electron' && results.electronError) continue
+        try {
+            results[mode].push(await measure(exe, mode))
+        } catch (error) {
+            if (windows || mode !== 'electron') throw error
+            results.electronError = error.message
+            console.error(error.message)
+        }
+    }
 }
 console.log(JSON.stringify(results, null, 2))
