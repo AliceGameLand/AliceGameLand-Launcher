@@ -8,13 +8,26 @@ const root = path.resolve(import.meta.dirname, '..')
 const app = path.join(root, 'app')
 const output = path.join(root, 'dist', 'tauri-ui')
 const language = require('../app/assets/js/langloader.js')
+const { version } = require('../package.json')
 
 language.setupLanguage()
+
+const releaseDocument = await readFile(path.join(root, 'docs', 'releases', version + '.md'), 'utf8').catch(error => {
+    if (error.code !== 'ENOENT') throw error
+    return ''
+})
+const [releaseHeading, ...releaseLines] = releaseDocument.trim().split(/\r?\n/)
+const tauriRelease = {
+    version,
+    title: releaseHeading.replace(/^#\s+/, ''),
+    notes: releaseLines.filter(line => line.trim()).map(line => line.replace(/^\s*-\s+/, ''))
+}
 
 // Compile the existing templates once. The desktop app serves static assets.
 const markup = await ejs.renderFile(path.join(app, 'app.ejs'), {
     lang: language.queryEJS,
-    process: { platform: process.platform }
+    process: { platform: process.platform },
+    tauriRelease
 })
 const html = markup.replace(
     /<script src="\.\/assets\/js\/scripts\/[^"]+"\s*><\/script>/g,

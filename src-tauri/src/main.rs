@@ -3,6 +3,7 @@
 #[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
 compile_error!("macOS builds require Apple Silicon (aarch64-apple-darwin).");
 
+mod about;
 mod artifacts;
 mod auth;
 mod distribution;
@@ -343,6 +344,8 @@ fn main() {
             launcher_snapshot,
             select_server,
             server_status,
+            about::authentication_status,
+            about::open_project_page,
             play_server,
             game_settings,
             choose_game_folder,

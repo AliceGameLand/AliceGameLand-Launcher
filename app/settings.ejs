@@ -298,6 +298,7 @@
             </div>
         </div>
         <div id="settingsTabAbout" class="settingsTab" style="display: none;">
+            <% const previewRelease = typeof tauriRelease === 'undefined' ? null : tauriRelease %>
             <div class="settingsTabHeader">
                 <h1 class="settingsTabHeaderText"><%- lang('settings.aboutTabHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.aboutTabHeaderDesc') %></span>
@@ -311,10 +312,10 @@
                     <div id="settingsAboutCurrentVersion">
                         <div id="settingsAboutCurrentVersionCheck">&#10003;</div>
                         <div id="settingsAboutCurrentVersionDetails">
-                            <span id="settingsAboutCurrentVersionTitle"><%- lang('settings.stableRelease') %></span>
+                            <span id="settingsAboutCurrentVersionTitle"><%= previewRelease ? '미리보기' : lang('settings.stableRelease') %></span>
                             <div id="settingsAboutCurrentVersionLine">
                                 <span id="settingsAboutCurrentVersionText"><%- lang('settings.versionText') %></span>
-                                <span id="settingsAboutCurrentVersionValue">0.0.1-alpha.18</span>
+                                <span id="settingsAboutCurrentVersionValue"><%= previewRelease?.version ?? '0.0.1-alpha.18' %></span>
                             </div>
                         </div>
                     </div>
@@ -324,7 +325,9 @@
                     <!-- The following must be included in third-party usage. -->
                     <!-- <a href="https://github.com/dscalzi/HeliosLauncher" id="settingsAboutSourceButton" class="settingsAboutButton">Original Source</a> -->
                     <a href="<%- lang('settings.supportLink') %>" id="settingsAboutSupportButton" class="settingsAboutButton"><%- lang('settings.support') %></a>
-                    <a href="#" id="settingsAboutDevToolsButton" class="settingsAboutButton"><%- lang('settings.devToolsConsole') %></a>
+                    <% if (!previewRelease) { %>
+                        <a href="#" id="settingsAboutDevToolsButton" class="settingsAboutButton"><%- lang('settings.devToolsConsole') %></a>
+                    <% } %>
                 </div>
             </div>
             <details class="settings-service-status">
@@ -336,14 +339,22 @@
             <div class="settingsChangelogContainer">
                 <div class="settingsChangelogContent">
                     <div class="settingsChangelogHeadline">
-                        <h2 class="settingsChangelogTitle"><%- lang('settings.changelog') %></h2>
+                        <h2 class="settingsChangelogTitle"><%= previewRelease?.title || lang('settings.changelog') %></h2>
                     </div>
                     <div class="settingsChangelogText">
-                        <%- lang('settings.noReleaseNotes') %>
+                        <% if (previewRelease?.notes.length) { %>
+                            <ul>
+                                <% for (const note of previewRelease.notes) { %>
+                                    <li><%= note %></li>
+                                <% } %>
+                            </ul>
+                        <% } else { %>
+                            <%- lang('settings.noReleaseNotes') %>
+                        <% } %>
                     </div>
                 </div>
                 <div class="settingsChangelogActions">
-                    <a class="settingsChangelogButton settingsAboutButton" href="#"><%- lang('settings.viewReleaseNotes') %></a>
+                    <a class="settingsChangelogButton settingsAboutButton" href="<%= previewRelease ? lang('settings.sourceGithubLink') + '/releases/tag/v' + previewRelease.version : '#' %>"><%- lang('settings.viewReleaseNotes') %></a>
                 </div>
             </div>
         </div>

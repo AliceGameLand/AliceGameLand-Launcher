@@ -10,6 +10,8 @@
     "allow-launcher-snapshot",
     "allow-select-server",
     "allow-server-status",
+    "allow-authentication-status",
+    "allow-open-project-page",
     "allow-play-server",
     "allow-game-settings",
     "allow-choose-game-folder",

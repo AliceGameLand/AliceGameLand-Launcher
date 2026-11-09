@@ -13,6 +13,7 @@ url = { version = "2", features = ["serde"] }
 md-5 = "0.10"
 tauri = "2"
 tauri-plugin-dialog = "2"
+open = { version = "5.4", features = ["shellexecute-on-windows"] }
 flate2 = "1"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 sha1 = "0.10"

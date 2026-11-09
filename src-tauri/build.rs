@@ -4,6 +4,8 @@ fn main() {
             "launcher_snapshot",
             "select_server",
             "server_status",
+            "authentication_status",
+            "open_project_page",
             "play_server",
             "game_settings",
             "choose_game_folder",

@@ -123,6 +123,57 @@ function selectSettingsTab(id) {
     }
 }
 
+function bindProjectPage(link, page) {
+    async function open(event) {
+        event.preventDefault()
+        try {
+            await core.invoke('open_project_page', { page })
+        } catch (error) {
+            showError('링크를 열지 못했어요', error, link)
+        }
+    }
+    link.addEventListener('click', open)
+    link.addEventListener('auxclick', event => {
+        if (event.button === 1) void open(event)
+    })
+}
+
+function bindAbout(version) {
+    byId('settingsAboutCurrentVersionValue').textContent = version
+    const about = byId('settingsTabAbout')
+    bindProjectPage(byId('settingsAboutSourceButton'), 'source')
+    bindProjectPage(byId('settingsAboutSupportButton'), 'issues')
+    bindProjectPage(byId('reportIssueLink'), 'issues')
+    bindProjectPage(byId('launchFailureReport'), 'issues')
+    bindProjectPage(about.querySelector('.settingsChangelogButton'), 'release')
+    const status = byId('mojang_status_text')
+    const list = byId('mojangServiceList')
+    const details = about.querySelector('.settings-service-status')
+    const labels = { red: '장애', yellow: '지연', green: '정상', grey: '확인 불가' }
+    let refreshedAt = 0
+    details.addEventListener('toggle', async () => {
+        if (!details.open || Date.now() - refreshedAt < 60_000) return
+        refreshedAt = Date.now()
+        status.textContent = '상태 확인 중…'
+        status.dataset.state = 'grey'
+        list.replaceChildren()
+        const services = await core.invoke('authentication_status').catch(() => [])
+        const state = Object.keys(labels).find(key => services.some(service => service.state === key)) ?? 'grey'
+        status.dataset.state = state
+        status.textContent = labels[state]
+        list.replaceChildren(...services.map(service => {
+            const item = document.createElement('li')
+            const name = document.createElement('span')
+            const value = document.createElement('span')
+            name.textContent = service.name
+            value.dataset.state = service.state
+            value.textContent = labels[service.state]
+            item.append(name, value)
+            return item
+        }))
+    })
+}
+
 function showSettingsAccount() {
     const container = byId('settingsCurrentMicrosoftAccounts')
     const row = document.createElement('div')
@@ -242,6 +293,7 @@ try {
     setupList.replaceChildren(...snapshot.servers.map(server => makeChoice(server, true)))
     setActiveServer(initial)
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
+    bindAbout(snapshot.version)
 
     const settingsButton = byId('settingsMediaButton')
     const accountButton = byId('avatarOverlay')
@@ -250,7 +302,7 @@ try {
     accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
     for (const tab of settingsTabs) {
         const id = tab.getAttribute('rSc')
-        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft', 'settingsTabJava', 'settingsTabLauncher'].includes(id)
+        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft', 'settingsTabJava', 'settingsTabLauncher', 'settingsTabAbout'].includes(id)
         tab.addEventListener('click', () => selectSettingsTab(id))
     }
     allowPrerelease.disabled = true
