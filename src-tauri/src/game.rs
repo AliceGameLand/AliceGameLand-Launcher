@@ -130,18 +130,31 @@ fn install_neoforge(common: &Path, java: &Path, version: &str, installer: &Path)
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
-    let status = command
+    let output = command
+        .arg("-Djava.awt.headless=true")
         .arg("-jar")
         .arg(installer)
         .arg("--install-client")
         .arg(common)
         .current_dir(common)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-    if !status.success() || !nonempty_zip(&patched) {
-        return Err(format!("NeoForge {version} 설치를 완료하지 못했어요. ({status})").into());
+        .output()?;
+    if !output.status.success() || !nonempty_zip(&patched) {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let mut details: Vec<_> = stderr
+            .lines()
+            .rev()
+            .take(6)
+            .chain(stdout.lines().rev().take(6))
+            .collect();
+        details.reverse();
+        return Err(format!(
+            "NeoForge {version} 설치를 완료하지 못했어요. ({})\n{}",
+            output.status,
+            details.join("\n")
+        )
+        .into());
     }
     Ok(())
 }
