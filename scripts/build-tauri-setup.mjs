@@ -49,6 +49,7 @@ try {
             win: { executableName: 'AliceGameLand-Tauri', icon: 'build/icon.ico', signAndEditExecutable: false },
             nsis: {
                 include: 'build/tauri-wizard.nsh',
+                guid: '69bd89cc-35ff-5408-9b98-972ba4fb446c',
                 oneClick: false,
                 perMachine: false,
                 allowElevation: true,

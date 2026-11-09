@@ -40,6 +40,10 @@ jobs:
         run: npm run tauri -- build --ci --no-bundle -- --locked
       - if: runner.os == 'Windows'
         run: node scripts/build-tauri-setup.mjs
+      - if: runner.os == 'Windows'
+        run: |
+          $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
+          ./scripts/test-tauri-setup.ps1 -Installer $setup.FullName
       - if: runner.os == 'macOS'
         run: npm run tauri -- build --ci -- --locked
       - uses: actions/upload-artifact@v6
