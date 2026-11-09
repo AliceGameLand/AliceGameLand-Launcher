@@ -13,6 +13,7 @@ use tokio::sync::oneshot;
 
 const IDENTITY_ORIGIN: &str = "https://login.microsoftonline.com";
 const REDIRECT: &str = "https://login.microsoftonline.com/common/oauth2/nativeclient";
+const TOKEN_ENDPOINT: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 const SCOPE: &str = "XboxLive.signin offline_access";
 const WINDOW_LABEL: &str = "microsoft-login";
 const CREDENTIAL_SERVICE: &str = "kr.dreamcraft.alicegameland.launcher";
@@ -31,8 +32,15 @@ struct ClientConfig {
 
 #[derive(Deserialize, Serialize)]
 pub struct Profile {
-    id: String,
-    name: String,
+    pub id: String,
+    pub name: String,
+}
+
+pub struct GameSession {
+    pub profile: Profile,
+    pub access_token: String,
+    pub client_id: String,
+    pub xuid: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -68,6 +76,7 @@ struct DisplayClaims {
 #[derive(Deserialize)]
 struct UserClaim {
     uhs: String,
+    xid: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -184,29 +193,28 @@ async fn read_response<T: DeserializeOwned>(request: RequestBuilder, stage: &str
         .map_err(|_| format!("{stage} 응답이 올바르지 않아요."))
 }
 
-async fn exchange(client_id: &str, code: &str, verifier: &str) -> Result<SavedAccount> {
-    let client = Client::builder()
+fn login_client() -> Result<Client> {
+    Client::builder()
         .timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|_| "로그인 네트워크를 준비하지 못했어요.")?;
-    let microsoft: MicrosoftToken = read_response(
-        client
-            .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
-            .form(&[
-                ("grant_type", "authorization_code"),
-                ("client_id", client_id),
-                ("code", code),
-                ("code_verifier", verifier),
-                ("redirect_uri", REDIRECT),
-                ("scope", SCOPE),
-            ]),
-        "Microsoft 인증",
-    )
-    .await?;
+        .map_err(|_| "로그인 네트워크를 준비하지 못했어요.".into())
+}
+
+fn client_id() -> Result<String> {
+    let config: ClientConfig = serde_json::from_str(CLIENT_CONFIG)
+        .map_err(|_| "Microsoft 로그인 설정을 읽지 못했어요.")?;
+    Ok(std::env::var("ALICE_MS_CLIENT_ID").unwrap_or(config.azure_client_id))
+}
+
+async fn exchange(
+    client: &Client,
+    client_id: String,
+    microsoft_access_token: &str,
+) -> Result<GameSession> {
     let xbox: XboxToken = read_response(
         client.post("https://user.auth.xboxlive.com/user/authenticate").json(&json!({
-            "Properties": {"AuthMethod":"RPS", "SiteName":"user.auth.xboxlive.com", "RpsTicket":format!("d={}", microsoft.access_token)},
+            "Properties": {"AuthMethod":"RPS", "SiteName":"user.auth.xboxlive.com", "RpsTicket":format!("d={microsoft_access_token}")},
             "RelyingParty":"http://auth.xboxlive.com", "TokenType":"JWT"
         })),
         "Xbox Live 인증",
@@ -242,9 +250,11 @@ async fn exchange(client_id: &str, code: &str, verifier: &str) -> Result<SavedAc
         "Minecraft 프로필 확인",
     )
     .await?;
-    Ok(SavedAccount {
+    Ok(GameSession {
         profile,
-        refresh_token: microsoft.refresh_token,
+        access_token: minecraft.access_token,
+        xuid: claim.xid.clone(),
+        client_id,
     })
 }
 
@@ -261,14 +271,11 @@ fn credential() -> Result<keyring::Entry> {
         .map_err(|_| "운영체제의 계정 보관함을 열지 못했어요.".into())
 }
 
-#[tauri::command]
-pub async fn account_profile() -> Result<Option<Profile>> {
+async fn load_account() -> Result<Option<SavedAccount>> {
     tauri::async_runtime::spawn_blocking(|| match credential()?.get_password() {
-        Ok(saved) => {
-            let account: SavedAccount =
-                serde_json::from_str(&saved).map_err(|_| "저장된 계정 정보를 읽지 못했어요.")?;
-            Ok(Some(account.profile))
-        }
+        Ok(saved) => serde_json::from_str(&saved)
+            .map(Some)
+            .map_err(|_| "저장된 계정 정보를 읽지 못했어요.".into()),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(_) => Err("운영체제의 계정 보관함을 읽지 못했어요.".into()),
     })
@@ -276,16 +283,7 @@ pub async fn account_profile() -> Result<Option<Profile>> {
     .map_err(|_| "계정 정보 확인이 중단됐어요.")?
 }
 
-#[tauri::command]
-pub async fn microsoft_sign_in(app: AppHandle) -> Result<Profile> {
-    let _login = LOGIN
-        .try_lock()
-        .map_err(|_| "이미 Microsoft 로그인이 진행 중이에요.")?;
-    let config: ClientConfig = serde_json::from_str(CLIENT_CONFIG)
-        .map_err(|_| "Microsoft 로그인 설정을 읽지 못했어요.")?;
-    let client_id = std::env::var("ALICE_MS_CLIENT_ID").unwrap_or(config.azure_client_id);
-    let (code, verifier) = authorize(&app, &client_id).await?;
-    let account = exchange(&client_id, &code, &verifier).await?;
+async fn save_account(account: SavedAccount) -> Result<Profile> {
     tauri::async_runtime::spawn_blocking(move || {
         let stored =
             serde_json::to_string(&account).map_err(|_| "계정 정보를 저장하지 못했어요.")?;
@@ -298,6 +296,68 @@ pub async fn microsoft_sign_in(app: AppHandle) -> Result<Profile> {
     .map_err(|_| "계정 저장이 중단됐어요.")?
 }
 
+#[tauri::command]
+pub async fn account_profile() -> Result<Option<Profile>> {
+    Ok(load_account().await?.map(|account| account.profile))
+}
+
+#[tauri::command]
+pub async fn microsoft_sign_in(app: AppHandle) -> Result<Profile> {
+    let _login = LOGIN
+        .try_lock()
+        .map_err(|_| "이미 Microsoft 로그인이 진행 중이에요.")?;
+    let client_id = client_id()?;
+    let (code, verifier) = authorize(&app, &client_id).await?;
+    let client = login_client()?;
+    let microsoft: MicrosoftToken = read_response(
+        client.post(TOKEN_ENDPOINT).form(&[
+            ("grant_type", "authorization_code"),
+            ("client_id", client_id.as_str()),
+            ("code", &code),
+            ("code_verifier", &verifier),
+            ("redirect_uri", REDIRECT),
+            ("scope", SCOPE),
+        ]),
+        "Microsoft 인증",
+    )
+    .await?;
+    let session = exchange(&client, client_id, &microsoft.access_token).await?;
+    save_account(SavedAccount {
+        profile: session.profile,
+        refresh_token: microsoft.refresh_token,
+    })
+    .await
+}
+
+pub async fn game_session() -> Result<GameSession> {
+    let _login = LOGIN
+        .try_lock()
+        .map_err(|_| "이미 Microsoft 로그인이 진행 중이에요.")?;
+    let mut account = load_account()
+        .await?
+        .ok_or("Microsoft 계정에 로그인해 주세요.")?;
+    let client_id = client_id()?;
+    let client = login_client()?;
+    let microsoft: MicrosoftToken = read_response(
+        client.post(TOKEN_ENDPOINT).form(&[
+            ("grant_type", "refresh_token"),
+            ("client_id", client_id.as_str()),
+            ("refresh_token", &account.refresh_token),
+            ("scope", SCOPE),
+        ]),
+        "Microsoft 로그인 갱신",
+    )
+    .await?;
+
+    // Keep the replacement even if Xbox or Minecraft is temporarily unavailable.
+    account.refresh_token = microsoft.refresh_token;
+    let profile = save_account(account).await?;
+    let session = exchange(&client, client_id, &microsoft.access_token).await?;
+    if session.profile.id != profile.id {
+        return Err("저장된 Minecraft 계정과 일치하지 않아요. 다시 로그인해 주세요.".into());
+    }
+    Ok(session)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

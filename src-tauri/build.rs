@@ -3,7 +3,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "launcher_snapshot",
             "select_server",
-            "prepare_server",
+            "play_server",
             "account_profile",
             "microsoft_sign_in",
         ]),

@@ -9,7 +9,7 @@
     "core:window:allow-start-dragging",
     "allow-launcher-snapshot",
     "allow-select-server",
-    "allow-prepare-server",
+    "allow-play-server",
     "allow-account-profile",
     "allow-microsoft-sign-in"
   ]

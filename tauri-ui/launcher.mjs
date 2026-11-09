@@ -12,7 +12,10 @@ const homeList = byId('homeServerList')
 const setupList = byId('firstServerList')
 const overlay = byId('overlayContainer')
 const acknowledge = byId('overlayAcknowledge')
+const playButton = byId('launch_button')
+const launchDetails = byId('launch_details')
 let needsServerSelection
+let activeServer
 
 for (const [suffix, action] of [['close', 'close'], ['minimize', 'minimize'], ['restoredown', 'toggleMaximize']]) {
     const control = byId('frameButton_' + suffix) ?? byId('frameButtonDarwin_' + suffix)
@@ -53,6 +56,7 @@ function showError(title, message, restoreFocus) {
 }
 
 function setActiveServer(server) {
+    activeServer = server
     byId('homeServerName').textContent = server.name
     const meta = byId('homeServerMeta')
     meta.textContent = 'Minecraft ' + server.minecraftVersion
@@ -126,6 +130,28 @@ try {
     setActiveServer(initial)
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
 
+    playButton.disabled = false
+    playButton.addEventListener('click', async () => {
+        const server = activeServer
+        const progress = new core.Channel()
+        progress.onmessage = message => { byId('launch_details_text').textContent = message }
+        for (const button of homeList.children) button.disabled = true
+        playButton.disabled = true
+        byId('launch_content').hidden = true
+        byId('launch_progress').removeAttribute('value')
+        byId('launch_progress_label').hidden = true
+        launchDetails.hidden = false
+        try {
+            await core.invoke('play_server', { serverId: server.id, progress })
+        } catch (error) {
+            showError('게임을 시작하지 못했어요', error, playButton)
+        } finally {
+            launchDetails.hidden = true
+            byId('launch_content').hidden = false
+            playButton.disabled = false
+            for (const button of homeList.children) button.disabled = false
+        }
+    })
     loginButton.addEventListener('click', async () => {
         loginButton.disabled = true
         showView('waitingContainer')

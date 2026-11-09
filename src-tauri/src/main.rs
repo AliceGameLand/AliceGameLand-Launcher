@@ -3,6 +3,7 @@
 mod artifacts;
 mod auth;
 mod distribution;
+mod game;
 mod java;
 mod minecraft;
 mod preferences;
@@ -13,8 +14,6 @@ use distribution::{Distribution, Server};
 use preferences::Preferences;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
-
-static PREPARATION: Mutex<()> = Mutex::new(());
 
 struct Launcher {
     servers: Vec<Server>,
@@ -60,63 +59,47 @@ fn select_server(server_id: String, launcher: State<'_, Launcher>) -> Result<(),
     Ok(())
 }
 
-#[derive(Serialize)]
-struct Prepared {
-    verified_files: usize,
-    downloaded_files: usize,
-}
-
 #[tauri::command]
-async fn prepare_server(
+async fn play_server(
     server_id: String,
+    progress: tauri::ipc::Channel<&'static str>,
+    app: AppHandle,
     launcher: State<'_, Launcher>,
-) -> Result<Prepared, String> {
+) -> Result<u32, String> {
     if !launcher.servers.iter().any(|server| server.id == server_id) {
-        return Err("Unknown server".into());
+        return Err("서버를 찾지 못했어요.".into());
     }
-    let profile = launcher
-        .preferences_path
-        .parent()
-        .ok_or("Launcher profile directory is missing")?
-        .to_path_buf();
-    let root = launcher
-        .preferences
-        .lock()
-        .map_err(|error| error.to_string())?
-        .game_data_dir()
-        .ok_or("Game data directory is missing")?
-        .to_path_buf();
-    tauri::async_runtime::spawn_blocking(move || -> artifacts::Result<_> {
-        let _guard = PREPARATION
-            .try_lock()
-            .map_err(|_| "Server files are already being prepared")?;
-        if !root.is_absolute() {
-            return Err("Game data directory must be absolute".into());
+    let launch = {
+        let profile = launcher
+            .preferences_path
+            .parent()
+            .ok_or("런처 프로필 경로를 찾지 못했어요.")?
+            .to_path_buf();
+        let preferences = launcher
+            .preferences
+            .lock()
+            .map_err(|_| "런처 설정을 읽지 못했어요.")?;
+        let root = preferences
+            .game_data_dir()
+            .ok_or("게임 데이터 폴더를 찾지 못했어요.")?
+            .to_path_buf();
+        let (settings, java_options) = preferences.launch_settings(&server_id);
+        game::Launch {
+            profile,
+            root,
+            server_id,
+            launcher_version: app.package_info().version.to_string(),
+            settings,
+            java_options,
         }
-        let client = artifacts::client()?;
-        let distribution = Distribution::refresh(&client, &profile.join("distribution.json"))?;
-        let server = distribution
-            .servers
-            .iter()
-            .find(|server| server.id == server_id)
-            .ok_or("Server is no longer in the distribution")?;
-        let files = server.files()?;
-        java::prepare(&profile.join("java"))?;
-        std::fs::create_dir_all(&root)?;
-        let root = root.canonicalize()?;
-        let downloaded = artifacts::ensure_all(&client, &root, &files)?;
-        let vanilla = minecraft::files(&client, &root, &server.minecraft_version)?;
-        let vanilla_downloaded = artifacts::ensure_all(&client, &root, &vanilla)?;
-        Ok(Prepared {
-            verified_files: files.len() + vanilla.len(),
-            downloaded_files: downloaded + vanilla_downloaded,
-        })
-    })
-    .await
-    .map_err(|error| error.to_string())?
-    .map_err(|error| error.to_string())
+    };
+    let _ = progress.send("Minecraft 계정 확인 중");
+    let session = auth::game_session().await?;
+    tauri::async_runtime::spawn_blocking(move || game::play(launch, session, progress))
+        .await
+        .map_err(|_| "게임 준비가 중단됐어요.")?
+        .map_err(|error| error.to_string())
 }
-
 fn test_profile() -> std::io::Result<Option<PathBuf>> {
     let Some(path) = std::env::var_os("ALICE_TAURI_TEST_PROFILE").map(PathBuf::from) else {
         return Ok(None);
@@ -153,7 +136,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             launcher_snapshot,
             select_server,
-            prepare_server,
+            play_server,
             auth::account_profile,
             auth::microsoft_sign_in
         ])

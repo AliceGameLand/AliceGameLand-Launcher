@@ -26,14 +26,14 @@ struct Settings {
     launcher: LauncherSettings,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
-struct GameSettings {
-    res_width: Option<u32>,
-    res_height: Option<u32>,
-    fullscreen: Option<bool>,
-    auto_connect: Option<bool>,
-    launch_detached: Option<bool>,
+pub struct GameSettings {
+    pub res_width: Option<u32>,
+    pub res_height: Option<u32>,
+    pub fullscreen: Option<bool>,
+    pub auto_connect: Option<bool>,
+    pub launch_detached: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -43,20 +43,27 @@ struct LauncherSettings {
     data_directory: Option<PathBuf>,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
-struct JavaOptions {
+pub struct JavaOptions {
     #[serde(rename = "minRAM")]
-    min_ram: Option<String>,
+    pub min_ram: Option<String>,
     #[serde(rename = "maxRAM")]
-    max_ram: Option<String>,
-    jvm_options: Option<Vec<String>>,
+    pub max_ram: Option<String>,
+    pub jvm_options: Option<Vec<String>>,
 }
 
 impl Preferences {
     pub fn game_data_dir(&self) -> Option<&Path> {
         self.settings.launcher.data_directory.as_deref()
     }
+    pub fn launch_settings(&self, server_id: &str) -> (GameSettings, JavaOptions) {
+        (
+            self.settings.game.clone(),
+            self.java_config.get(server_id).cloned().unwrap_or_default(),
+        )
+    }
+
     pub fn load(current: &Path, data_root: &Path) -> io::Result<Self> {
         if let Some(preferences) = read(current)? {
             return Ok(preferences);

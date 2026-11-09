@@ -25,6 +25,10 @@ pub struct Server {
     pub id: String,
     pub name: String,
     pub minecraft_version: String,
+    #[serde(default, skip_serializing)]
+    pub address: String,
+    #[serde(default, skip_serializing, rename = "autoconnect")]
+    pub auto_connect: bool,
     #[serde(default)]
     pub main_server: bool,
     #[serde(skip_serializing)]
@@ -37,6 +41,8 @@ struct Module {
     #[serde(rename = "type")]
     kind: Kind,
     artifact: Artifact,
+    #[serde(default = "enabled")]
+    classpath: bool,
     #[serde(default, rename = "subModules")]
     children: Vec<Module>,
 }
@@ -134,7 +140,64 @@ impl Distribution {
     }
 }
 
+fn enabled() -> bool {
+    true
+}
+
+pub struct Loader {
+    pub manifest: PathBuf,
+    pub installer: Option<(String, PathBuf)>,
+    pub libraries: Vec<(String, PathBuf)>,
+    pub mods: Vec<String>,
+}
+
+pub fn library_key(coordinate: &str) -> Result<String> {
+    let mut parts = coordinate.split('@').next().unwrap_or_default().split(':');
+    let group = parts.next().ok_or("Missing Maven group")?;
+    let artifact = parts.next().ok_or("Missing Maven artifact")?;
+    parts.next().ok_or("Missing Maven version")?;
+    Ok(match parts.next() {
+        Some(classifier) => format!("{group}:{artifact}:{classifier}"),
+        None => format!("{group}:{artifact}"),
+    })
+}
 impl Server {
+    pub fn loader(&self, root: &Path) -> Result<Loader> {
+        let loader = self
+            .modules
+            .iter()
+            .find(|module| matches!(module.kind, Kind::NeoForge | Kind::Fabric))
+            .ok_or("No supported loader in the distribution")?;
+        let manifest = loader
+            .children
+            .iter()
+            .find(|module| matches!(module.kind, Kind::VersionManifest))
+            .ok_or("Loader version manifest is missing")?
+            .path(&self.id)?;
+        let installer = if matches!(loader.kind, Kind::NeoForge) {
+            let version = loader
+                .id
+                .split(':')
+                .nth(2)
+                .filter(|version| safe_segment(version))
+                .ok_or("Invalid NeoForge version")?;
+            Some((version.to_owned(), root.join(loader.path(&self.id)?)))
+        } else {
+            None
+        };
+        let mut libraries = Vec::new();
+        let mut mods = Vec::new();
+        for module in &self.modules {
+            module.runtime_files(&self.id, root, &mut libraries, &mut mods)?;
+        }
+        Ok(Loader {
+            manifest: root.join(manifest),
+            installer,
+            libraries,
+            mods,
+        })
+    }
+
     pub fn files(&self) -> Result<Vec<PlannedArtifact>> {
         let mut files = Vec::new();
         for module in &self.modules {
@@ -145,8 +208,34 @@ impl Server {
 }
 
 impl Module {
-    fn plan(&self, server_id: &str, files: &mut Vec<PlannedArtifact>) -> Result<()> {
-        let relative_path = if matches!(self.kind, Kind::VersionManifest) {
+    fn runtime_files(
+        &self,
+        server_id: &str,
+        root: &Path,
+        libraries: &mut Vec<(String, PathBuf)>,
+        mods: &mut Vec<String>,
+    ) -> Result<()> {
+        match self.kind {
+            Kind::Fabric | Kind::Library if self.classpath => {
+                libraries.push((library_key(&self.id)?, root.join(self.path(server_id)?)));
+            }
+            Kind::ForgeMod => mods.push(self.id.split('@').next().unwrap_or_default().to_owned()),
+            Kind::FabricMod => mods.push(
+                root.join(self.path(server_id)?)
+                    .into_os_string()
+                    .into_string()
+                    .map_err(|_| "Mod path is not valid Unicode")?,
+            ),
+            _ => {}
+        }
+        for child in &self.children {
+            child.runtime_files(server_id, root, libraries, mods)?;
+        }
+        Ok(())
+    }
+
+    fn path(&self, server_id: &str) -> Result<PathBuf> {
+        Ok(if matches!(self.kind, Kind::VersionManifest) {
             if !safe_segment(&self.id) {
                 return Err("Invalid loader manifest name".into());
             }
@@ -172,7 +261,11 @@ impl Module {
                 Kind::VersionManifest => unreachable!(),
             };
             base.join(relative)
-        };
+        })
+    }
+
+    fn plan(&self, server_id: &str, files: &mut Vec<PlannedArtifact>) -> Result<()> {
+        let relative_path = self.path(server_id)?;
         let download = Download {
             url: self.artifact.url.clone(),
             size: Some(self.artifact.size),
@@ -247,6 +340,28 @@ mod tests {
         assert!(iris.download.hash.is_none());
     }
 
+    #[test]
+    fn bundled_servers_resolve_their_loader_and_runtime_libraries() {
+        let distribution = Distribution::parse(BUNDLED.as_bytes()).unwrap();
+        for server in distribution.servers {
+            let loader = server.loader(Path::new("fixture")).unwrap();
+            assert!(loader.manifest.starts_with("fixture/common/versions"));
+            assert!(!loader.libraries.is_empty());
+            if server.minecraft_version == "26.3" {
+                assert!(loader.installer.is_none());
+                assert!(loader
+                    .libraries
+                    .iter()
+                    .any(|(key, _)| key == "net.fabricmc:fabric-loader"));
+            } else {
+                assert!(loader.installer.is_some());
+                assert!(!loader
+                    .libraries
+                    .iter()
+                    .any(|(key, _)| key.starts_with("net.neoforged:neoforge:")));
+            }
+        }
+    }
     #[test]
     fn rejects_paths_that_escape_the_game_directory() {
         for value in [

@@ -27,13 +27,68 @@ struct IndexEntry {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Version {
-    id: String,
+pub struct Version {
+    pub id: String,
+    pub assets: String,
+    #[serde(rename = "type")]
+    pub version_type: String,
+    pub arguments: Arguments,
     downloads: ClientDownloads,
     asset_index: AssetIndex,
     libraries: Vec<Library>,
 }
 
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub struct Arguments {
+    jvm: Vec<Argument>,
+    game: Vec<Argument>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Argument {
+    Plain(String),
+    Conditional {
+        rules: Vec<Rule>,
+        value: ArgumentValue,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ArgumentValue {
+    One(String),
+    Multiple(Vec<String>),
+}
+
+impl Arguments {
+    pub fn resolve(&self, custom_resolution: bool) -> Result<(Vec<&str>, Vec<&str>)> {
+        fn resolve(arguments: &[Argument], custom_resolution: bool) -> Result<Vec<&str>> {
+            let mut selected = Vec::new();
+            for argument in arguments {
+                match argument {
+                    Argument::Plain(text) => selected.push(text.as_str()),
+                    Argument::Conditional { rules, value } => {
+                        if rules_allow(rules, platform(), env::consts::ARCH, custom_resolution)? {
+                            match value {
+                                ArgumentValue::One(text) => selected.push(text.as_str()),
+                                ArgumentValue::Multiple(text) => {
+                                    selected.extend(text.iter().map(String::as_str))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(selected)
+        }
+        Ok((
+            resolve(&self.jvm, custom_resolution)?,
+            resolve(&self.game, custom_resolution)?,
+        ))
+    }
+}
 #[derive(Deserialize)]
 struct ClientDownloads {
     client: FileDownload,
@@ -106,7 +161,7 @@ struct OsRule {
     version: Option<String>,
 }
 
-fn rules_allow(rules: &[Rule], os: &str, arch: &str) -> Result<bool> {
+fn rules_allow(rules: &[Rule], os: &str, arch: &str, custom_resolution: bool) -> Result<bool> {
     let mut allowed = rules.is_empty();
     for rule in rules {
         if let Some(platform) = &rule.os {
@@ -122,7 +177,9 @@ fn rules_allow(rules: &[Rule], os: &str, arch: &str) -> Result<bool> {
                 return Err("Mojang library uses an unsupported OS version rule".into());
             }
         }
-        if rule.features.values().any(|&enabled| enabled) {
+        if rule.features.iter().any(|(feature, &enabled)| {
+            enabled != (feature == "has_custom_resolution" && custom_resolution)
+        }) {
             continue;
         }
         allowed = matches!(rule.action, Action::Allow);
@@ -183,6 +240,46 @@ fn assets_plan(index: Assets) -> Result<Vec<PlannedArtifact>> {
     Ok(files)
 }
 
+fn platform() -> &'static str {
+    match env::consts::OS {
+        "macos" => "osx",
+        other => other,
+    }
+}
+
+impl Version {
+    pub fn runtime_libraries(&self, root: &Path) -> Result<Vec<(String, PathBuf, bool)>> {
+        let mut libraries = Vec::new();
+        for library in &self.libraries {
+            if library.compatible()? {
+                let relative = artifacts::relative_path(&library.downloads.artifact.path)?;
+                libraries.push((
+                    crate::distribution::library_key(&library.name)?,
+                    root.join("common/libraries").join(relative),
+                    library
+                        .name
+                        .split(':')
+                        .nth(3)
+                        .is_some_and(|name| name.starts_with("natives-")),
+                ));
+            }
+        }
+        Ok(libraries)
+    }
+}
+
+impl Library {
+    fn compatible(&self) -> Result<bool> {
+        let arch = env::consts::ARCH;
+        Ok(rules_allow(&self.rules, platform(), arch, false)?
+            && native_for_platform(&self.name, platform(), arch))
+    }
+}
+
+pub fn version_path(version_id: &str) -> PathBuf {
+    PathBuf::from("common/versions").join(version_id)
+}
+
 pub fn files(client: &Client, root: &Path, version_id: &str) -> Result<Vec<PlannedArtifact>> {
     if !artifacts::safe_segment(version_id) {
         return Err("Invalid Minecraft version".into());
@@ -203,7 +300,7 @@ pub fn files(client: &Client, root: &Path, version_id: &str) -> Result<Vec<Plann
         .into_iter()
         .find(|entry| entry.id == version_id)
         .ok_or("Minecraft version is absent from Mojang's index")?;
-    let version_base = PathBuf::from("common/versions").join(version_id);
+    let version_base = version_path(version_id);
     let version_json = PlannedArtifact {
         download: Download {
             url: entry.url,
@@ -232,14 +329,8 @@ pub fn files(client: &Client, root: &Path, version_id: &str) -> Result<Vec<Plann
         version.downloads.client,
     )?);
 
-    let os = match env::consts::OS {
-        "macos" => "osx",
-        other => other,
-    };
     for library in version.libraries {
-        if !rules_allow(&library.rules, os, env::consts::ARCH)?
-            || !native_for_platform(&library.name, os, env::consts::ARCH)
-        {
+        if !library.compatible()? {
             continue;
         }
         let artifact = library.downloads.artifact;
@@ -290,7 +381,7 @@ mod tests {
             r#"[{"action":"allow"},{"action":"disallow","os":{"name":"osx"}}]"#,
         )
         .unwrap();
-        assert!(rules_allow(&rules, "windows", "x86_64").unwrap());
-        assert!(!rules_allow(&rules, "osx", "aarch64").unwrap());
+        assert!(rules_allow(&rules, "windows", "x86_64", false).unwrap());
+        assert!(!rules_allow(&rules, "osx", "aarch64", false).unwrap());
     }
 }
