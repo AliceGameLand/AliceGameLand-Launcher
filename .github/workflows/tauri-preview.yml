@@ -9,6 +9,10 @@ on:
         description: Compare Windows launcher performance with Electron v1.0.41
         type: boolean
         default: false
+      runtime:
+        description: Download and verify the pinned Java runtime on both platforms
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,6 +43,9 @@ jobs:
           npm run lint -- --rule '@stylistic/linebreak-style: off'
       - run: npm run tauri:ui
       - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml
+      - name: Verify first Java 25 download and cache reuse
+        if: inputs.runtime || contains(github.event.head_commit.message, '[runtime]')
+        run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml downloads_and_reuses_java_25 -- --ignored
       - name: Verify local mod removal uses the system Trash
         run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml sends_only_the_selected_mod_to_os_trash -- --ignored
       - if: runner.os == 'Windows'

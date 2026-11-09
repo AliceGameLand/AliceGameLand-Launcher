@@ -167,4 +167,19 @@ mod tests {
         assert!(runtime_for("macos", "x86_64").is_err());
         assert!(runtime_for("linux", "x86_64").is_err());
     }
+
+    #[test]
+    #[ignore = "downloads the pinned Java archive"]
+    fn downloads_and_reuses_java_25() -> Result<()> {
+        let cache = tempfile::tempdir()?;
+        assert!(cached_executable(cache.path()).is_none());
+        let executable = prepare(cache.path())?;
+        assert!(executable.is_file());
+        assert_eq!(cached_executable(cache.path()).as_ref(), Some(&executable));
+        let marker = cache_destination(cache.path()).join("cache-check");
+        fs::write(&marker, b"first preparation")?;
+        assert_eq!(prepare(cache.path())?, executable);
+        assert_eq!(fs::read_to_string(marker)?, "first preparation");
+        Ok(())
+    }
 }
