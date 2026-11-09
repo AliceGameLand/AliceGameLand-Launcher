@@ -163,6 +163,22 @@ jobs:
           git worktree add --detach "$reference/source" "$reference_commit"
           (
             cd "$reference/source"
+            # Restore the original DMG build dependency coordinates without changing its archive hash.
+            node <<'NODE'
+          const fs = require('node:fs')
+          const reference = JSON.parse(fs.readFileSync('package-lock.json'))
+          const current = require(process.env.GITHUB_WORKSPACE + '/package-lock.json')
+          const builder = 'node_modules/dmg-builder'
+          const license = 'node_modules/dmg-license'
+          for (const dependency of [builder, license]) {
+              if (reference.packages[dependency].integrity !== current.packages[dependency].integrity) {
+                  throw new Error(`Electron reference dependency changed: ${dependency}`)
+              }
+          }
+          reference.packages[builder].optionalDependencies = current.packages[builder].optionalDependencies
+          reference.packages[license] = current.packages[license]
+          fs.writeFileSync('package-lock.json', JSON.stringify(reference, null, 2) + '\n')
+          NODE
             npm ci
             CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist -- --mac dmg --arm64 --publish never
           )
