@@ -36,6 +36,9 @@ jobs:
       - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml
       - if: runner.os == 'Windows'
         run: npm run tauri -- build --ci --no-bundle -- --locked
+      - name: Verify the Windows login screen
+        if: runner.os == 'Windows'
+        run: node scripts/benchmark-launcher-windows.mjs --smoke src-tauri/target/release/alice-gameland.exe
       - if: runner.os == 'Windows'
         uses: actions/upload-artifact@v6
         with:
