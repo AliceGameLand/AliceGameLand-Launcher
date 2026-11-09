@@ -45,6 +45,7 @@ if (process.platform === 'win32') {
         await writeFile(path.join(wizard, name + '.html'), page
             .replace(/ {4}<meta http-equiv="Content-Security-Policy"[^\n]*\r?\n/, '')
             .replace('assets/SealCircle.png', '../assets/images/SealCircle.png')
+            .replace('<header class="titlebar">', '<header class="titlebar" data-tauri-drag-region>')
             .replace('<div class="brand">', '<div class="brand" data-tauri-drag-region>')
             .replace('필요한 Java가 함께 설치됩니다.', 'Java는 첫 게임 실행 때 내려받아요.')
             .replace('<script src="renderer.js"></script>', '<script type="module" src="bridge.mjs"></script>'))
