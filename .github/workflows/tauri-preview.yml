@@ -29,7 +29,12 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - run: npm run lint
+      - if: runner.os == 'Windows'
+        run: npm run lint
+      - if: runner.os == 'macOS'
+        run: npm run lint -- --rule '@stylistic/linebreak-style: off'
+      - run: npm run tauri:ui
+      - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml
       - run: npm run tauri -- build --ci -- --locked
       - uses: actions/upload-artifact@v6
         with:

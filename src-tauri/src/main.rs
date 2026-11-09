@@ -1,6 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod java;
+
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 const DISTRIBUTION: &str = include_str!("../../app/assets/distribution.json");
@@ -37,9 +40,23 @@ fn launcher_snapshot(app: AppHandle) -> Result<Snapshot, String> {
     })
 }
 
+#[tauri::command]
+async fn prepare_java(app: AppHandle) -> Result<PathBuf, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("java");
+    tauri::async_runtime::spawn_blocking(move || {
+        java::prepare(&base).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![launcher_snapshot])
+        .invoke_handler(tauri::generate_handler![launcher_snapshot, prepare_java])
         .run(tauri::generate_context!())
         .expect("failed to start AliceGameLand");
 }
