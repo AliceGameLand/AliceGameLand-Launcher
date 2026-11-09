@@ -467,9 +467,12 @@ mod tests {
             }
             Ok(())
         });
-        for (server, mod_argument) in [
-            ("AliceGameLand-26.2", "--fml.modLists"),
-            ("BurcomPvP-26.3", "--fabric.addMods"),
+        for (server, main_class) in [
+            ("AliceGameLand-26.2", "net.neoforged.fml.startup.Client"),
+            (
+                "BurcomPvP-26.3",
+                "net.fabricmc.loader.impl.launch.knot.KnotClient",
+            ),
         ] {
             let instance = root.join("instances").join(server);
             fs::create_dir_all(&instance)?;
@@ -503,7 +506,13 @@ mod tests {
                 java::cached_executable(&profile.join("java")).ok_or("Java cache is missing")?;
             assert_eq!(Path::new(command.get_program()), cached_java);
             assert_eq!(command.get_current_dir(), Some(instance.as_path()));
-            assert!(args.iter().any(|arg| *arg == mod_argument));
+            assert!(args.iter().any(|arg| *arg == main_class));
+            assert!(fs::read_dir(instance.join("mods"))?
+                .filter_map(std::result::Result::ok)
+                .any(|entry| entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "jar")));
             assert_eq!(
                 args.iter().any(|arg| *arg == "-XstartOnFirstThread"),
                 cfg!(target_os = "macos")
