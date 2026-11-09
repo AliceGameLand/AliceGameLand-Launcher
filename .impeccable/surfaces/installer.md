@@ -1,6 +1,6 @@
 # Custom Windows setup
 
-Mode: Operate. Scope: installer/index.html, installer/style.css, installer/renderer.js, installer/main.cjs.
+Mode: Operate. Scope: installer/index.html, installer/style.css, installer/renderer.js, installer/main.cjs, installer/uninstall/.
 Seed: none (precise requested replacement of the Windows wizard inside the existing brand).
 
 ## THESIS
@@ -8,6 +8,8 @@ Installing the launcher is the first room of GameLand: a dedicated frameless win
 
 ## STORY
 Choose the location and user scope, install, then launch or finish. Preserve the NSIS install/uninstall engine, bundled Java and update metadata. Do not modify the installed launcher during development.
+
+Windows removal reuses the same header, typography and progress bar. Show what stays in one line, focus Cancel on entry and show completion after NSIS removes the installation.
 
 ## FIRST VIEWPORT
 A compact 720x520 window with a custom 48px draggable header and one full-width installation column. The user requested removing the entire garden panel; the installation title, path picker and primary action now fill that space. Keep 20px group spacing and a 200px completion action directly below the installed path. No native wizard navigation or decorative progress claims.

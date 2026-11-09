@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; font-src 'self'">
+    <title>앨리스의 게임랜드 제거</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="titlebar">
+        <div class="brand"><img src="assets/SealCircle.png" alt="" width="24" height="24"><span>앨리스의 게임랜드</span><span id="version"></span></div>
+        <div class="window-actions">
+            <button id="minimize" aria-label="최소화"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+            <button id="close" aria-label="닫기"><svg viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
+        </div>
+    </header>
+    <main>
+        <section class="setup-content">
+            <div id="intro" class="screen">
+                <div>
+                    <h2 tabindex="-1">런처를 제거할까요?</h2>
+                    <p class="description">게임 파일, 설정, 로그인 정보는 남아요.</p>
+                </div>
+                <p id="error" role="alert" hidden></p>
+                <div class="bottom-action">
+                    <button id="cancel" class="quiet" autofocus>취소</button>
+                    <button id="remove" class="primary">제거하기</button>
+                </div>
+            </div>
+            <div id="progress" class="screen" hidden>
+                <div><h2 tabindex="-1">런처를 제거하고 있어요</h2><p class="description">잠시만 기다려 주세요.</p></div>
+                <div class="progress-block"><div id="indeterminate" role="progressbar" aria-label="런처 제거 중"><span></span></div></div>
+            </div>
+            <div id="complete" class="screen" hidden>
+                <div class="complete-icon"><svg viewBox="0 0 32 32"><path d="m8 16 6 6 12-12"/></svg></div>
+                <div><h2 tabindex="-1">런처를 제거했어요</h2><p class="description">같은 PC에 다시 설치하면 남겨둔 게임 파일과 설정을 사용할 수 있어요.</p></div>
+                <div class="complete-actions"><button id="finish" class="primary">닫기</button></div>
+            </div>
+        </section>
+    </main>
+    <script src="renderer.js"></script>
+</body>
+</html>

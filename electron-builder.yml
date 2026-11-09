@@ -14,6 +14,7 @@ publish:
 
 files:
   - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,.impeccable,PRODUCT.md,DESIGN.md,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
+  - '!installer/uninstall/**'
 
 extraResources:
   - 'libraries'
@@ -26,9 +27,22 @@ win:
   target: 
     - target: 'nsis'
       arch: 'x64'
+  extraResources:
+    - from: 'installer/uninstall'
+      to: 'uninstall-wizard'
+    - from: 'installer/style.css'
+      to: 'uninstall-wizard/style.css'
+    - from: 'app/assets/images/SealCircle.png'
+      to: 'uninstall-wizard/assets/SealCircle.png'
+    - from: 'app/assets/fonts'
+      to: 'uninstall-wizard/assets'
+      filter:
+        - 'PretendardVariable.woff2'
+        - 'Pretendard-LICENSE.txt'
 
 # Windows Installer Configuration
 nsis:
+  include: 'build/uninstaller.nsh'
   oneClick: false
   perMachine: false
   allowElevation: true

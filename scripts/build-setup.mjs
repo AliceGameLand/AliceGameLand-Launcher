@@ -24,7 +24,9 @@ const outputs = process.argv.includes('--ui-only') ? [path.join(root, 'dist/setu
 const payload = outputs.find(file => file.endsWith('.exe'))
 if(!payload) throw new Error('NSIS payload was not built')
 fs.mkdirSync(stage, { recursive: true })
-for(const name of fs.readdirSync(path.join(root, 'installer'))) fs.copyFileSync(path.join(root, 'installer', name), path.join(stage, name))
+for(const entry of fs.readdirSync(path.join(root, 'installer'), { withFileTypes: true })) {
+    if(entry.isFile()) fs.copyFileSync(path.join(root, 'installer', entry.name), path.join(stage, entry.name))
+}
 fs.mkdirSync(path.join(stage, 'assets'), { recursive: true })
 const assets = {
     'SealCircle.png': 'app/assets/images/SealCircle.png',
