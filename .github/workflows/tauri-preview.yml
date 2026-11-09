@@ -182,8 +182,24 @@ jobs:
             npm ci
             CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist -- --mac dmg --arm64 --publish never
           )
-          electron_app=$(find "$reference/source/dist" -maxdepth 2 -type d -name '*.app' -print -quit)
-          tauri_app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit)
+          electron_dmg=$(find "$reference/source/dist" -maxdepth 1 -type f -name '*.dmg' -print -quit)
+          tauri_dmg=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)
+          mount="$reference/mount"
+          trap 'hdiutil detach "$mount" >/dev/null 2>&1 || true' EXIT
+          install_app() {
+            test -f "$1"
+            mkdir -p "$mount"
+            hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$1"
+            local app
+            app=$(find "$mount" -mindepth 1 -maxdepth 1 -type d -name '*.app' -print -quit)
+            test -d "$app"
+            ditto "$app" "$2"
+            hdiutil detach "$mount"
+          }
+          electron_app="$reference/Electron.app"
+          tauri_app="$reference/Tauri.app"
+          install_app "$electron_dmg" "$electron_app"
+          install_app "$tauri_dmg" "$tauri_app"
           executable() {
             /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$1/Contents/Info.plist"
           }
@@ -191,8 +207,6 @@ jobs:
           tauri="$tauri_app/Contents/MacOS/$(executable "$tauri_app")"
           test "$(lipo -archs "$electron")" = arm64
           test "$(lipo -archs "$tauri")" = arm64
-          electron_dmg=$(find "$reference/source/dist" -maxdepth 1 -type f -name '*.dmg' -print -quit)
-          tauri_dmg=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)
           node scripts/benchmark-launcher.mjs "$electron" "$tauri" > "$reference/startup.json"
           node -e 'const fs = require("node:fs"); const [startup, electron, tauri] = process.argv.slice(1); const result = JSON.parse(fs.readFileSync(startup)); result.installerBytes = { electron: fs.statSync(electron).size, tauri: fs.statSync(tauri).size }; console.log(JSON.stringify(result, null, 2))' "$reference/startup.json" "$electron_dmg" "$tauri_dmg" > dist/benchmark-macos.json
       - name: Upload the Apple Silicon comparison

@@ -131,7 +131,9 @@ async function measure(executable, mode) {
 
     const start = performance.now()
     const deadline = start + 20_000
-    const child = spawn(exe, args, { cwd: path.dirname(exe), env, stdio: 'ignore', windowsHide: true })
+    const child = spawn(exe, args, { cwd: path.dirname(exe), env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true })
+    let stderr = ''
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr = (stderr + chunk).slice(-8192) })
     const exited = new Promise(resolve => {
         child.once('exit', resolve)
         child.once('error', resolve)
@@ -166,6 +168,9 @@ async function measure(executable, mode) {
             }
         }
         return { readyMs, workingSetBytes, idleCpuPercentOfOneCore: 100 * cpuTime / (10_000 * idleMs), processCount: last.size }
+    } catch (error) {
+        if (stderr) console.error(stderr)
+        throw new Error(`${mode} launcher benchmark failed: ${error.message}`, { cause: error })
     } finally {
         if (ws?.readyState === globalThis.WebSocket.OPEN) {
             const close = mode === 'electron'
