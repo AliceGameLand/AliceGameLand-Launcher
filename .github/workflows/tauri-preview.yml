@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       benchmark:
-        description: Compare Windows launcher performance with Electron v1.0.41
+        description: Compare launcher performance with Electron v1.0.41
         type: boolean
         default: false
       runtime:
@@ -105,7 +105,7 @@ jobs:
           if ($LASTEXITCODE -gt 1) { throw 'Could not extract the Electron application' }
           $electron = Join-Path $application '앨리스의 게임랜드.exe'
           if (!(Test-Path -LiteralPath $electron -PathType Leaf)) { throw 'Missing Electron application' }
-          node scripts/benchmark-launcher-windows.mjs $electron src-tauri/target/release/alice-gameland.exe --tauri-receipt |
+          node scripts/benchmark-launcher.mjs $electron src-tauri/target/release/alice-gameland.exe --tauri-receipt |
             Tee-Object -FilePath dist/benchmark-windows.json
           if ($LASTEXITCODE -ne 0) { throw 'Launcher benchmark did not finish' }
       - name: Upload the Windows comparison
@@ -151,4 +151,38 @@ jobs:
           path: |
             dist/tauri-setup/*-setup.exe
             src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+      - name: Compare Apple Silicon launcher startup and installer size
+        if: runner.os == 'macOS' && (inputs.benchmark || contains(github.event.head_commit.message, '[benchmark-mac]'))
+        shell: bash
+        run: |
+          git fetch --depth=1 origin refs/tags/v1.0.41
+          reference_commit=aa0ae5575d2345728bf54090968ba683abe7b7c4
+          test "$(git rev-parse FETCH_HEAD)" = "$reference_commit"
+          reference=$(mktemp -d "$RUNNER_TEMP/alice-electron.XXXXXX")
+          git worktree add --detach "$reference/source" "$reference_commit"
+          (
+            cd "$reference/source"
+            npm ci
+            CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist -- --mac dmg --arm64 --publish never
+          )
+          electron_app=$(find "$reference/source/dist" -maxdepth 2 -type d -name '*.app' -print -quit)
+          tauri_app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit)
+          executable() {
+            /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$1/Contents/Info.plist"
+          }
+          electron="$electron_app/Contents/MacOS/$(executable "$electron_app")"
+          tauri="$tauri_app/Contents/MacOS/$(executable "$tauri_app")"
+          test "$(lipo -archs "$electron")" = arm64
+          test "$(lipo -archs "$tauri")" = arm64
+          electron_dmg=$(find "$reference/source/dist" -maxdepth 1 -type f -name '*.dmg' -print -quit)
+          tauri_dmg=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)
+          node scripts/benchmark-launcher.mjs "$electron" "$tauri" > "$reference/startup.json"
+          node -e 'const fs = require("node:fs"); const [startup, electron, tauri] = process.argv.slice(1); const result = JSON.parse(fs.readFileSync(startup)); result.installerBytes = { electron: fs.statSync(electron).size, tauri: fs.statSync(tauri).size }; console.log(JSON.stringify(result, null, 2))' "$reference/startup.json" "$electron_dmg" "$tauri_dmg" > dist/benchmark-macos.json
+      - name: Upload the Apple Silicon comparison
+        if: runner.os == 'macOS' && (inputs.benchmark || contains(github.event.head_commit.message, '[benchmark-mac]'))
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-launcher-benchmark
+          path: dist/benchmark-macos.json
           if-no-files-found: error

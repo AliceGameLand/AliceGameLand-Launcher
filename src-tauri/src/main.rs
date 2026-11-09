@@ -453,6 +453,10 @@ fn main() {
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
             if verify_login {
                 window = window.initialization_script(include_str!("test_login_ready.js"));
+                #[cfg(target_os = "macos")]
+                {
+                    window = window.incognito(true);
+                }
             }
             window.build()?;
             Ok(())

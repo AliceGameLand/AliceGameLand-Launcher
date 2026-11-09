@@ -6,9 +6,10 @@ import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 const [electronExe, tauriExe, option] = process.argv.slice(2)
-const tauriReceipt = option === '--tauri-receipt'
-if (process.platform !== 'win32' || !electronExe || !tauriExe) {
-    throw new Error('Usage on Windows: node scripts/benchmark-launcher-windows.mjs ELECTRON_EXE TAURI_EXE [--tauri-receipt]')
+const windows = process.platform === 'win32'
+const tauriReceipt = !windows || option === '--tauri-receipt'
+if ((!windows && process.platform !== 'darwin') || !electronExe || !tauriExe) {
+    throw new Error('Usage on Windows or macOS: node scripts/benchmark-launcher.mjs ELECTRON_EXE TAURI_EXE [--tauri-receipt]')
 }
 
 const visibleLogin = `(() => {
@@ -144,6 +145,8 @@ async function measure(executable, mode) {
             await waitForLogin(ws, deadline)
         }
         const readyMs = Math.round(performance.now() - start)
+        // WebKit's macOS XPC helpers are outside the launcher's process tree.
+        if (!windows) return { readyMs }
 
         await sleep(2000)
         const first = processTree(child.pid)
@@ -173,9 +176,13 @@ async function measure(executable, mode) {
         }
         ws?.close()
         if (running(child)) {
-            try {
-                execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
-            } catch {
+            if (windows) {
+                try {
+                    execFileSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+                } catch {
+                    child.kill()
+                }
+            } else {
                 child.kill()
             }
             await Promise.race([exited, sleep(3000)])
