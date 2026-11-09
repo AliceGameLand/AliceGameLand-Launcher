@@ -1,0 +1,12 @@
+[package]
+name = "alice-gameland"
+version = "1.0.41"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = "2"

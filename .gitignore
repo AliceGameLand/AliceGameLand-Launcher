@@ -6,3 +6,4 @@
 /dist/
 /.runtime-cache/
 /runtime/
+/src-tauri/target/

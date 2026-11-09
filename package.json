@@ -20,7 +20,9 @@
     "dist:win": "npm run runtime:prepare && npm run dist -- -w",
     "dist:mac": "npm run dist -- -m",
     "dist:linux": "npm run dist -- -l",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "tauri": "tauri",
+    "tauri:ui": "node scripts/build-tauri-ui.mjs"
   },
   "engines": {
     "node": "22.x.x"
@@ -44,6 +46,7 @@
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.6.1",
+    "@tauri-apps/cli": "2.12.4",
     "electron": "^39.2.7",
     "electron-builder": "^26.4.0",
     "eslint": "^9.39.2",

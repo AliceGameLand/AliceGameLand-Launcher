@@ -1,0 +1,40 @@
+name: Tauri preview
+
+on:
+  push:
+    branches: [codex/tauri-migration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            platform: windows-x64
+          - runner: macos-15
+            platform: macos-arm64
+          - runner: macos-15-intel
+            platform: macos-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run tauri -- build --ci -- --locked
+      - uses: actions/upload-artifact@v6
+        with:
+          name: tauri-${{ matrix.platform }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
