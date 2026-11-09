@@ -13,7 +13,7 @@ mod wizard;
 use std::{path::PathBuf, sync::Mutex};
 
 use distribution::{Distribution, Server};
-use preferences::{GameSettings, JavaOptions, Preferences};
+use preferences::{heap_megabytes, GameSettings, JavaOptions, Preferences};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
@@ -126,16 +126,6 @@ struct JavaSettingsChange {
     options: JavaOptions,
 }
 
-fn heap_megabytes(value: &str) -> Option<u32> {
-    let (number, unit) = value.split_at_checked(value.len().checked_sub(1)?)?;
-    let quantity: u32 = number.parse().ok()?;
-    match unit {
-        "G" | "g" => quantity.checked_mul(1024),
-        "M" | "m" => Some(quantity),
-        _ => None,
-    }
-}
-
 #[tauri::command]
 fn save_game_settings(
     settings: GameSettings,
@@ -150,15 +140,13 @@ fn save_game_settings(
     }
     let java = match java {
         Some(change) => {
-            if !launcher
+            let server = launcher
                 .servers
                 .iter()
-                .any(|server| server.id == change.server_id)
-            {
-                return Err("서버를 찾지 못했어요.".into());
-            }
-            let min = heap_megabytes(change.options.min_ram.as_deref().unwrap_or("2G"));
-            let max = heap_megabytes(change.options.max_ram.as_deref().unwrap_or("4G"));
+                .find(|server| server.id == change.server_id)
+                .ok_or("서버를 찾지 못했어요.")?;
+            let (min, max) = change.options.effective_heap(server.recommended_heap());
+            let (min, max) = (heap_megabytes(&min), heap_megabytes(&max));
             if !matches!((min, max), (Some(min), Some(max)) if min > 0 && max >= min) {
                 return Err("Java 최소 메모리가 최대 메모리를 넘지 않게 설정해 주세요.".into());
             }

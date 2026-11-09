@@ -53,6 +53,38 @@ pub struct JavaOptions {
     pub jvm_options: Option<Vec<String>>,
 }
 
+pub fn heap_megabytes(value: &str) -> Option<u32> {
+    let (number, unit) = value.split_at_checked(value.len().checked_sub(1)?)?;
+    let quantity: u32 = number.parse().ok()?;
+    match unit {
+        "G" | "g" => quantity.checked_mul(1024),
+        "M" | "m" => Some(quantity),
+        _ => None,
+    }
+}
+
+impl JavaOptions {
+    pub fn effective_heap(&self, recommended: u32) -> (String, String) {
+        let min = self.min_ram.clone().unwrap_or_else(|| {
+            let max = self
+                .max_ram
+                .as_deref()
+                .and_then(heap_megabytes)
+                .unwrap_or(recommended);
+            format!("{}M", recommended.min(max))
+        });
+        let max = self.max_ram.clone().unwrap_or_else(|| {
+            let min = self
+                .min_ram
+                .as_deref()
+                .and_then(heap_megabytes)
+                .unwrap_or(recommended);
+            format!("{}M", recommended.max(min))
+        });
+        (min, max)
+    }
+}
+
 impl Preferences {
     pub fn game_data_dir(&self) -> Option<&Path> {
         self.settings.launcher.data_directory.as_deref()
@@ -217,5 +249,11 @@ mod tests {
         assert_eq!(java.min_ram.as_deref(), Some("3072M"));
         assert_eq!(java.max_ram.as_deref(), Some("6G"));
         assert_eq!(java.jvm_options.unwrap(), ["-Dexample=one value"]);
+
+        let partial = JavaOptions {
+            max_ram: Some("3G".into()),
+            ..JavaOptions::default()
+        };
+        assert_eq!(partial.effective_heap(4096), ("3072M".into(), "3G".into()));
     }
 }

@@ -369,23 +369,11 @@ pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str
     for arg in loader_jvm {
         args.push(expand(arg, &loader_variables)?);
     }
-    let default_heap = format!("{}M", server.recommended_heap());
-    args.push(format!(
-        "-Xms{}",
-        launch
-            .java_options
-            .min_ram
-            .as_deref()
-            .unwrap_or(&default_heap)
-    ));
-    args.push(format!(
-        "-Xmx{}",
-        launch
-            .java_options
-            .max_ram
-            .as_deref()
-            .unwrap_or(&default_heap)
-    ));
+    let (min, max) = launch
+        .java_options
+        .effective_heap(server.recommended_heap());
+    args.push(format!("-Xms{min}"));
+    args.push(format!("-Xmx{max}"));
     args.extend(launch.java_options.jvm_options.unwrap_or_default());
     args.push(loader_version.main_class);
     for arg in vanilla_game.into_iter().chain(loader_game) {

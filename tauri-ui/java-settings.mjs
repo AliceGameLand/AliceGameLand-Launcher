@@ -98,8 +98,10 @@ export function createJavaSettings(document) {
                 byId('settingsMemoryAvail').textContent = (snapshot.memory.available / giga).toFixed(1) + 'G'
             }
             const recommended = snapshot.recommendedMib / 1024
-            const min = gibibytes(snapshot.options.minRAM, recommended)
-            const max = gibibytes(snapshot.options.maxRAM, recommended)
+            const savedMin = gibibytes(snapshot.options.minRAM, null)
+            const savedMax = gibibytes(snapshot.options.maxRAM, null)
+            const min = savedMin ?? Math.min(recommended, savedMax ?? recommended)
+            const max = savedMax ?? Math.max(recommended, savedMin ?? recommended)
             minimum = Math.min(snapshot.minimumMib / 1024, min, max)
             const hostLimit = Number.isFinite(total)
                 ? Math.floor(total > 16 ? total - 4 - (total - 16) / 8 : total * 0.75)
