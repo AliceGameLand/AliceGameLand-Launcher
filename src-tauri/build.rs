@@ -12,6 +12,8 @@ fn main() {
             "java_settings",
             "save_game_settings",
             "open_game_folder",
+            "mod_settings",
+            "open_instance_folder",
             "microsoft_sign_out",
             "account_profile",
             "microsoft_sign_in",

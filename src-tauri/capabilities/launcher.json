@@ -18,6 +18,8 @@
     "allow-java-settings",
     "allow-save-game-settings",
     "allow-open-game-folder",
+    "allow-mod-settings",
+    "allow-open-instance-folder",
     "allow-microsoft-sign-out",
     "allow-account-profile",
     "allow-microsoft-sign-in"

@@ -24,6 +24,7 @@ let statusRequest = 0
 let selectedGameDirectory = null
 const javaSettings = createJavaSettings(document)
 const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
+const modsPanel = byId('settingsTabMods')
 const launcherSettings = byId('settingsTabLauncher')
 const gameDirectory = launcherSettings.querySelector('[cValue=DataDirectory]')
 const chooseGameDirectory = launcherSettings.querySelector('.settingsFileSelButton')
@@ -120,6 +121,73 @@ function selectSettingsTab(id) {
     }
     for (const pane of document.querySelectorAll('.settingsTab')) {
         pane.style.display = pane.id === id ? '' : 'none'
+    }
+}
+
+function modRow(name, enabled, state) {
+    const row = document.createElement('div')
+    row.className = 'settingsBaseMod'
+    row.toggleAttribute('enabled', enabled)
+    const content = document.createElement('div')
+    content.className = 'settingsModContent'
+    const label = document.createElement('span')
+    label.className = 'settingsModName'
+    label.textContent = name
+    const status = document.createElement('span')
+    status.className = 'settingsModRequired'
+    status.textContent = state
+    content.append(label, status)
+    row.append(content)
+    return row
+}
+
+function bindMods(settingsDone) {
+    const tab = settingsTabs.find(button => button.getAttribute('rSc') === 'settingsTabMods')
+    const required = byId('settingsReqModsContent')
+    const local = byId('settingsDropinModsContent')
+    const shaderNote = byId('settingsShaderpackDesc')
+    const inventory = byId('settingsModsContainer')
+    let request = 0
+    function visible() {
+        return visibleView === 'settingsContainer' && tab.hasAttribute('selected')
+    }
+    async function refresh() {
+        if (!visible()) return
+        const refreshId = ++request
+        modsPanel.querySelector('.settingsSelServContent').textContent = activeServer.name
+        inventory.setAttribute('aria-busy', 'true')
+        try {
+            const mods = await core.invoke('mod_settings', { serverId: activeServer.id })
+            if (refreshId !== request || !visible()) return
+            required.replaceChildren(...mods.required.map(name => modRow(name, true, '항상 켜짐')))
+            local.replaceChildren(...mods.local.map(({ name, enabled }) => modRow(name, enabled, enabled ? '켜짐' : '꺼짐')))
+            shaderNote.textContent = mods.shaders.length
+                ? '설치된 셰이더팩 · ' + mods.shaders.join(', ')
+                : '설치된 셰이더팩이 없어요.'
+        } catch (error) {
+            if (refreshId === request && visible()) showError('모드 설정을 열지 못했어요', error, tab)
+        } finally {
+            if (refreshId === request) inventory.removeAttribute('aria-busy')
+        }
+    }
+    byId('settingsShadersSelect').hidden = true
+    tab.addEventListener('click', refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'F5' || !visible()) return
+        event.preventDefault()
+        void refresh()
+    })
+    modsPanel.querySelector('.settingsSwitchServerButton').addEventListener('click', () => settingsDone.click())
+    for (const [id, folder] of [['settingsDropinFileSystemButton', 'mods'], ['settingsShaderpackButton', 'shaderpacks']]) {
+        const button = byId(id)
+        button.addEventListener('click', async () => {
+            try {
+                await core.invoke('open_instance_folder', { serverId: activeServer.id, folder })
+            } catch (error) {
+                showError('폴더를 열지 못했어요', error, button)
+            }
+        })
     }
 }
 
@@ -302,9 +370,10 @@ try {
     accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
     for (const tab of settingsTabs) {
         const id = tab.getAttribute('rSc')
-        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft', 'settingsTabJava', 'settingsTabLauncher', 'settingsTabAbout'].includes(id)
+        tab.disabled = id === 'settingsTabUpdate'
         tab.addEventListener('click', () => selectSettingsTab(id))
     }
+    bindMods(settingsDone)
     allowPrerelease.disabled = true
     launcherSettings.querySelector('.settingsFileSelDesc').textContent = '게임 파일은 이 폴더에 저장돼요. 폴더를 바꾸면 기존 파일은 원래 위치에 남아요.'
     chooseGameDirectory.addEventListener('click', async () => {

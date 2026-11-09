@@ -8,6 +8,7 @@ mod artifacts;
 mod auth;
 mod distribution;
 mod game;
+mod instance_settings;
 mod java;
 mod minecraft;
 mod preferences;
@@ -27,6 +28,28 @@ struct Launcher {
     servers: Vec<Server>,
     preferences_path: PathBuf,
     preferences: Mutex<Preferences>,
+}
+
+impl Launcher {
+    fn data_directory(&self) -> Result<PathBuf, String> {
+        self.preferences
+            .lock()
+            .map_err(|_| "런처 설정을 읽지 못했어요.")?
+            .game_data_dir()
+            .filter(|path| path.is_absolute())
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| "게임 데이터 폴더를 찾지 못했어요.".into())
+    }
+
+    fn instance(&self, server_id: &str) -> Result<(&Server, PathBuf), String> {
+        let server = self
+            .servers
+            .iter()
+            .find(|server| server.id == server_id)
+            .ok_or("서버를 찾지 못했어요.")?;
+        let instance = self.data_directory()?.join("instances").join(&server.id);
+        Ok((server, instance))
+    }
 }
 
 #[derive(Serialize)]
@@ -234,14 +257,30 @@ fn save_game_settings(
 
 #[tauri::command]
 fn open_game_folder(launcher: State<'_, Launcher>) -> Result<(), String> {
-    let path = launcher
-        .preferences
-        .lock()
-        .map_err(|_| "런처 설정을 읽지 못했어요.")?
-        .game_data_dir()
-        .filter(|path| path.is_absolute())
-        .ok_or("게임 데이터 폴더를 찾지 못했어요.")?
-        .to_path_buf();
+    open_folder(launcher.data_directory()?)
+}
+
+#[tauri::command]
+fn mod_settings(
+    server_id: String,
+    launcher: State<'_, Launcher>,
+) -> Result<instance_settings::ModSettings, String> {
+    let (server, instance) = launcher.instance(&server_id)?;
+    instance_settings::ModSettings::load(server, &instance)
+        .map_err(|_| "모드 폴더를 읽지 못했어요.".into())
+}
+
+#[tauri::command]
+fn open_instance_folder(
+    server_id: String,
+    folder: instance_settings::InstanceFolder,
+    launcher: State<'_, Launcher>,
+) -> Result<(), String> {
+    let (_, instance) = launcher.instance(&server_id)?;
+    open_folder(instance.join(folder.name()))
+}
+
+fn open_folder(path: PathBuf) -> Result<(), String> {
     std::fs::create_dir_all(&path).map_err(|_| "게임 데이터 폴더를 만들지 못했어요.")?;
     let opener = if cfg!(windows) {
         "explorer.exe"
@@ -352,6 +391,8 @@ fn main() {
             java_settings,
             save_game_settings,
             open_game_folder,
+            mod_settings,
+            open_instance_folder,
             auth::microsoft_sign_out,
             auth::account_profile,
             auth::microsoft_sign_in
