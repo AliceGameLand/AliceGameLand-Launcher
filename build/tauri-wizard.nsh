@@ -1,5 +1,41 @@
 ﻿!ifndef BUILD_UNINSTALLER
+  !define ALICE_WEBVIEW2_KEY "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
   !macro preInit
+    # Prefer the machine runtime. A machine install also needs it for other accounts.
+    SetRegView 32
+    ReadRegStr $R2 HKLM "${ALICE_WEBVIEW2_KEY}" "pv"
+    ${If} $R2 == ""
+    ${OrIf} $R2 == "0.0.0.0"
+      ${GetParameters} $R0
+      ClearErrors
+      ${GetOptions} $R0 "/allusers" $R1
+      ${If} ${Errors}
+        ReadRegStr $R2 HKCU "${ALICE_WEBVIEW2_KEY}" "pv"
+      ${EndIf}
+    ${EndIf}
+    SetRegView 64
+    ${If} $R2 == ""
+    ${OrIf} $R2 == "0.0.0.0"
+      ${IfNot} ${Silent}
+        MessageBox MB_OKCANCEL|MB_ICONINFORMATION "설치 화면을 열려면 Microsoft Edge WebView2가 필요해요." IDOK tauriInstallWebView2
+        SetErrorLevel 1
+        Quit
+      ${EndIf}
+      tauriInstallWebView2:
+      InitPluginsDir
+      File /oname=$PLUGINSDIR\MicrosoftEdgeWebView2Setup.exe "$%ALICE_WEBVIEW2_SETUP%"
+      ClearErrors
+      ExecWait '"$PLUGINSDIR\MicrosoftEdgeWebView2Setup.exe" /silent /install' $R2
+      ${If} ${Errors}
+      ${OrIf} $R2 != 0
+        ${IfNot} ${Silent}
+          MessageBox MB_OK|MB_ICONSTOP "WebView2를 설치하지 못했어요. 인터넷 연결을 확인하고 다시 실행해 주세요."
+        ${EndIf}
+        SetErrorLevel 1
+        Quit
+      ${EndIf}
+    ${EndIf}
     ${IfNot} ${Silent}
       System::Call 'kernel32::CreateMutexW(p 0, i 1, w "${APP_GUID}-setup-wizard") p .r0 ?e'
       Pop $1
@@ -45,6 +81,7 @@
 !macroend
 
 !macro customUnInit
+  Var /GLOBAL aliceRemoveFallback
   ${GetParameters} $R0
   ClearErrors
   ${GetOptions} $R0 "--alice-wizard-root=" $R1
@@ -83,10 +120,13 @@
     ${EndIf}
 
     tauriRemoveLaunchFailed:
-    MessageBox MB_OK|MB_ICONSTOP "제거 화면을 열지 못했어요. Microsoft Edge WebView2를 확인해 주세요."
     SetOutPath "$TEMP"
-    SetErrorLevel 1
+    MessageBox MB_YESNO|MB_ICONQUESTION "제거 화면을 열지 못했어요. 런처 제거를 계속할까요?" IDYES tauriRemoveNative
     Quit
+    tauriRemoveNative:
+    Call un.checkAppRunning
+    StrCpy $aliceRemoveFallback "1"
+    SetSilent silent
   ${EndIf}
 !macroend
 
@@ -103,4 +143,13 @@
   SetErrorLevel 2
   Quit
   tauriRemoveDone:
+!macroend
+
+
+!macro customUnInstallSection
+  Section
+    ${If} $aliceRemoveFallback == "1"
+      MessageBox MB_OK|MB_ICONINFORMATION "런처를 제거했어요."
+    ${EndIf}
+  SectionEnd
 !macroend
