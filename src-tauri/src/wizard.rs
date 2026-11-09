@@ -257,7 +257,7 @@ fn pick_folder(owner: isize, current: &str) -> Result<Option<PathBuf>, String> {
                     let _ = dialog.SetFolder(&folder);
                 }
             }
-            match dialog.Show(HWND(owner as *mut _)) {
+            match dialog.Show(Some(HWND(owner as *mut _))) {
                 Ok(()) => {}
                 Err(error) if error.code() == HRESULT::from_win32(ERROR_CANCELLED.0) => {
                     return Ok(None)
