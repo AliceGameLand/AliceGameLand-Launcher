@@ -1,0 +1,9 @@
+diff --git a/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh b/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
+--- a/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
++++ b/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
+@@ -5,3 +5,4 @@
+ Function un.onInit
+-  SetOutPath $INSTDIR
++  # The unelevated process waits for UAC and must not hold the install directory open.
++  SetOutPath "$TEMP"
+   ${LogSet} on
