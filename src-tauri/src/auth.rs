@@ -249,7 +249,15 @@ async fn exchange(client_id: &str, code: &str, verifier: &str) -> Result<SavedAc
 }
 
 fn credential() -> Result<keyring::Entry> {
-    keyring::Entry::new(CREDENTIAL_SERVICE, CREDENTIAL_USER)
+    let user = match crate::test_profile().map_err(|_| "테스트 프로필을 확인하지 못했어요.")?
+    {
+        Some(path) => format!(
+            "test-{:x}",
+            Sha256::digest(path.as_os_str().as_encoded_bytes())
+        ),
+        None => CREDENTIAL_USER.to_owned(),
+    };
+    keyring::Entry::new(CREDENTIAL_SERVICE, &user)
         .map_err(|_| "운영체제의 계정 보관함을 열지 못했어요.".into())
 }
 

@@ -72,11 +72,11 @@ fn select_server(server_id: String, launcher: State<'_, Launcher>) -> Result<(),
 }
 
 #[tauri::command]
-async fn prepare_java(app: AppHandle) -> Result<PathBuf, String> {
-    let base = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| error.to_string())?
+async fn prepare_java(launcher: State<'_, Launcher>) -> Result<PathBuf, String> {
+    let base = launcher
+        .preferences_path
+        .parent()
+        .ok_or("Launcher profile directory is missing")?
         .join("java");
     tauri::async_runtime::spawn_blocking(move || {
         java::prepare(&base).map_err(|error| error.to_string())
@@ -85,12 +85,31 @@ async fn prepare_java(app: AppHandle) -> Result<PathBuf, String> {
     .map_err(|error| error.to_string())?
 }
 
+fn test_profile() -> std::io::Result<Option<PathBuf>> {
+    let Some(path) = std::env::var_os("ALICE_TAURI_TEST_PROFILE").map(PathBuf::from) else {
+        return Ok(None);
+    };
+    if path.is_absolute() && path.is_dir() {
+        Ok(Some(path))
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Test profile must be an existing absolute directory",
+        ))
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
             let distribution: Distribution = serde_json::from_str(DISTRIBUTION)?;
-            let preferences_path = app.path().app_data_dir()?.join("preferences.json");
-            let preferences = Preferences::load(&preferences_path, &app.path().data_dir()?)?;
+            let test_profile = test_profile()?;
+            let (profile, data_root) = match test_profile {
+                Some(path) => (path.clone(), path),
+                None => (app.path().app_data_dir()?, app.path().data_dir()?),
+            };
+            let preferences_path = profile.join("preferences.json");
+            let preferences = Preferences::load(&preferences_path, &data_root)?;
             app.manage(Launcher {
                 servers: distribution.servers,
                 preferences_path,
