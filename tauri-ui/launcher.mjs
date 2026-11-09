@@ -44,10 +44,21 @@ try {
         const name = document.createElement('span')
         name.textContent = server.name
         item.append(icon, name)
-        item.addEventListener('click', () => selectServer(server, list))
+        item.addEventListener('click', async () => {
+            try {
+                await core.invoke('select_server', { serverId: server.id })
+                selectServer(server, list)
+            } catch {
+                const status = byId('homeServerStatus')
+                status.textContent = '서버 선택을 저장하지 못했습니다.'
+                status.hidden = false
+            }
+        })
         list.append(item)
     }
-    const server = snapshot.servers.find(candidate => candidate.mainServer) ?? snapshot.servers[0]
+    const server = snapshot.servers.find(candidate => candidate.id === snapshot.selectedServer)
+        ?? snapshot.servers.find(candidate => candidate.mainServer)
+        ?? snapshot.servers[0]
     if (!server) throw new Error('Empty server distribution')
     selectServer(server, list)
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
