@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { access, copyFile, mkdtemp, rm } from 'node:fs/promises'
+import { access, copyFile, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
@@ -22,6 +22,33 @@ const visibleLogin = `(() => {
 
 function running(child) {
     return child.pid && child.exitCode === null && child.signalCode === null
+}
+
+async function macCrashReport(executable, pid, startedAt) {
+    const name = path.basename(executable).normalize()
+    const directory = path.join(homedir(), 'Library', 'Logs', 'DiagnosticReports')
+    for (let attempt = 0; attempt < 8; attempt++) {
+        const entries = await readdir(directory).catch(() => [])
+        for (const entry of entries) {
+            if (!entry.endsWith('.ips') || !entry.normalize().startsWith(name)) continue
+            const file = path.join(directory, entry)
+            const info = await stat(file).catch(() => null)
+            if (!info || info.mtimeMs < startedAt) continue
+            try {
+                const text = await readFile(file, 'utf8')
+                const report = JSON.parse(text.slice(text.indexOf('\n') + 1))
+                if (report.pid !== pid) continue
+                const frames = report.threads?.[report.faultingThread]?.frames?.slice(0, 8)
+                return {
+                    exception: report.exception?.type,
+                    reason: report.termination?.namespace,
+                    code: report.termination?.code,
+                    frames: frames?.map(frame => [report.usedImages?.[frame.imageIndex]?.name, frame.symbol ?? frame.imageOffset])
+                }
+            } catch { /* The reporter may still be writing the file. */ }
+        }
+        await sleep(500)
+    }
 }
 
 async function reservePort() {
@@ -130,6 +157,7 @@ async function measure(executable, mode) {
         else env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-address=127.0.0.1 --remote-debugging-port=' + port
     }
 
+    const startedAt = Date.now()
     const start = performance.now()
     const deadline = start + 20_000
     const child = spawn(exe, args, { cwd: path.dirname(exe), env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true })
@@ -177,6 +205,10 @@ async function measure(executable, mode) {
     } catch (error) {
         if (stderr) console.error(stderr)
         const exit = child.signalCode ?? child.exitCode
+        if (!windows && child.signalCode && child.pid) {
+            const report = await macCrashReport(exe, child.pid, startedAt)
+            if (report) console.error(JSON.stringify(report))
+        }
         throw new Error(`${mode} launcher benchmark failed: ${error.message}${exit === null ? '' : ` (exit ${exit})`}`, { cause: error })
     } finally {
         if (ws?.readyState === globalThis.WebSocket.OPEN) {
