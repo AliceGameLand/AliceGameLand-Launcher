@@ -55,15 +55,20 @@ jobs:
       - if: runner.os == 'macOS'
         shell: bash
         run: |
-          app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
-          launcher="$app/Contents/MacOS/alice-gameland"
-          test "$(lipo -archs "$launcher")" = "$(uname -m)"
           profile=$(mktemp -d "$RUNNER_TEMP/alice-startup.XXXXXX")
-          mkdir "$profile/앨리스의 게임랜드"
+          mount="$profile/mount"
+          mkdir "$mount" "$profile/앨리스의 게임랜드"
+          dmg=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          pid=
+          trap 'if [ -n "$pid" ]; then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; fi; hdiutil detach "$mount"' EXIT
+          app=$(find "$mount" -maxdepth 1 -name '*.app' -print -quit)
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+          launcher="$app/Contents/MacOS/$executable"
+          test "$(lipo -archs "$launcher")" = "$(uname -m)"
           printf '%s\n' '{"settings":{"game":{"fullscreen":true}},"authenticationDatabase":{"fixture":true}}' > "$profile/앨리스의 게임랜드/config.json"
           ALICE_TAURI_TEST_PROFILE="$profile" "$launcher" > "$profile/startup.log" 2>&1 &
           pid=$!
-          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
           for attempt in {1..20}; do
             test -s "$profile/preferences.json" && break
             kill -0 "$pid" 2>/dev/null || { cat "$profile/startup.log"; exit 1; }
