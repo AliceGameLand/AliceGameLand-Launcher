@@ -28,8 +28,17 @@ impl InstanceFolder {
 
 #[derive(Serialize)]
 struct LocalMod {
+    file: PathBuf,
     name: String,
     enabled: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LocalModAction {
+    Enable,
+    Disable,
+    Trash,
 }
 
 #[derive(Serialize)]
@@ -77,37 +86,8 @@ fn filenames(directory: &Path) -> io::Result<Vec<String>> {
 
 impl ModSettings {
     pub fn load(server: &Server, instance: &Path) -> artifacts::Result<Self> {
-        let server_mods = Path::new("instances").join(&server.id).join("mods");
-        let mut managed_in_instance = BTreeSet::new();
-        let mut required = BTreeSet::new();
-        for artifact in server.files()? {
-            let path = artifact.relative_path;
-            if !mod_file(&path) {
-                continue;
-            }
-            if let Ok(relative) = path.strip_prefix(&server_mods) {
-                managed_in_instance.insert(relative.to_path_buf());
-            } else if !path.starts_with("common/modstore")
-                && !path.starts_with("common/mods/fabric")
-            {
-                continue;
-            }
-            if let Some(name) = path.file_name().and_then(OsStr::to_str) {
-                required.insert(name.to_owned());
-            }
-        }
-
-        let mods = instance.join("mods");
-        let mut local = Vec::new();
-        scan_local(&mods, Path::new(""), &managed_in_instance, &mut local)?;
-        if artifacts::safe_segment(&server.minecraft_version) {
-            scan_local(
-                &mods,
-                Path::new(&server.minecraft_version),
-                &managed_in_instance,
-                &mut local,
-            )?;
-        }
+        let (required, managed) = managed_mods(server)?;
+        let local = local_mods(server, instance, &managed)?;
         let shaders = shader_files(instance)?;
         let config = iris_config(instance)?;
         let selected_shader = config
@@ -124,7 +104,7 @@ impl ModSettings {
                     .map(str::to_owned)
             });
         Ok(Self {
-            required: required.into_iter().collect(),
+            required,
             local,
             shaders,
             selected_shader,
@@ -133,23 +113,155 @@ impl ModSettings {
     }
 }
 
+fn managed_mods(server: &Server) -> artifacts::Result<(Vec<String>, BTreeSet<String>)> {
+    let server_mods = Path::new("instances").join(&server.id).join("mods");
+    let mut managed = BTreeSet::new();
+    let mut required = BTreeSet::new();
+    for artifact in server.files()? {
+        let path = artifact.relative_path;
+        if !mod_file(&path) {
+            continue;
+        }
+        if let Ok(relative) = path.strip_prefix(&server_mods) {
+            // Protect alternate casing on case-insensitive game volumes.
+            managed.insert(relative.to_string_lossy().to_lowercase());
+        } else if !path.starts_with("common/modstore") && !path.starts_with("common/mods/fabric") {
+            continue;
+        }
+        if let Some(name) = path.file_name().and_then(OsStr::to_str) {
+            required.insert(name.to_owned());
+        }
+    }
+    Ok((required.into_iter().collect(), managed))
+}
+
+fn local_mods(
+    server: &Server,
+    instance: &Path,
+    managed: &BTreeSet<String>,
+) -> io::Result<Vec<LocalMod>> {
+    let mods = instance.join("mods");
+    let mut local = Vec::new();
+    scan_local(&mods, Path::new(""), managed, &mut local)?;
+    if artifacts::safe_segment(&server.minecraft_version) {
+        scan_local(
+            &mods,
+            Path::new(&server.minecraft_version),
+            managed,
+            &mut local,
+        )?;
+    }
+    Ok(local)
+}
+
 fn scan_local(
     mods: &Path,
     scope: &Path,
-    managed: &BTreeSet<PathBuf>,
+    managed: &BTreeSet<String>,
     output: &mut Vec<LocalMod>,
 ) -> io::Result<()> {
     for filename in filenames(&mods.join(scope))? {
         let base = filename.strip_suffix(".disabled").unwrap_or(&filename);
         let path = scope.join(base);
-        if mod_file(&path) && !managed.contains(&path) {
+        if mod_file(&path) && !managed.contains(&path.to_string_lossy().to_lowercase()) {
             output.push(LocalMod {
+                file: scope.join(&filename),
                 name: path.to_string_lossy().into_owned(),
                 enabled: filename == base,
             });
         }
     }
     Ok(())
+}
+
+pub fn change_local_mod(
+    server: &Server,
+    instance: &Path,
+    requested: &Path,
+    action: LocalModAction,
+) -> artifacts::Result<Option<PathBuf>> {
+    let (_, managed) = managed_mods(server)?;
+    let entry = local_mods(server, instance, &managed)?
+        .into_iter()
+        .find(|entry| entry.file == requested)
+        .ok_or("개인 모드 파일을 찾지 못했어요. 목록을 새로고침해 주세요.")?;
+    let instance = instance.canonicalize()?;
+    let path = instance.join("mods").join(&entry.file);
+    let parent = path.parent().ok_or("모드 폴더를 찾지 못했어요.")?;
+    if parent.canonicalize()?.as_path() != parent || !fs::symlink_metadata(&path)?.is_file() {
+        return Err("개인 모드 폴더 안의 파일만 변경할 수 있어요.".into());
+    }
+    let enabled = match action {
+        LocalModAction::Enable => true,
+        LocalModAction::Disable => false,
+        LocalModAction::Trash => {
+            move_to_trash(&path)?;
+            return Ok(None);
+        }
+    };
+    if enabled == entry.enabled {
+        return Ok(Some(entry.file));
+    }
+    let filename = entry
+        .file
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or("잘못된 모드 파일 이름이에요.")?;
+    let destination = if enabled {
+        filename
+            .strip_suffix(".disabled")
+            .ok_or("이미 켜져 있는 모드예요.")?
+            .to_owned()
+    } else {
+        format!("{filename}.disabled")
+    };
+    rename_mod(&path, &parent.join(&destination))?;
+    Ok(Some(entry.file.with_file_name(destination)))
+}
+
+#[cfg(windows)]
+fn rename_mod(source: &Path, target: &Path) -> artifacts::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::{core::PCWSTR, Win32::Storage::FileSystem::MoveFileW};
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain([0]).collect();
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain([0]).collect();
+    unsafe { MoveFileW(PCWSTR(source.as_ptr()), PCWSTR(target.as_ptr()))? };
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn rename_mod(source: &Path, target: &Path) -> artifacts::Result<()> {
+    use rustix::fs::{renameat_with, RenameFlags, CWD};
+    Ok(renameat_with(
+        CWD,
+        source,
+        CWD,
+        target,
+        RenameFlags::NOREPLACE,
+    )?)
+}
+
+#[cfg(windows)]
+fn move_to_trash(path: &Path) -> artifacts::Result<()> {
+    Ok(trash::delete(path)?)
+}
+
+#[cfg(target_os = "macos")]
+fn move_to_trash(path: &Path) -> artifacts::Result<()> {
+    use trash::macos::{DeleteMethod, TrashContextExtMacos};
+    let mut context = trash::TrashContext::new();
+    context.set_delete_method(DeleteMethod::NsFileManager);
+    Ok(context.delete(path)?)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn rename_mod(_: &Path, _: &Path) -> artifacts::Result<()> {
+    Err(io::Error::from(io::ErrorKind::Unsupported).into())
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn move_to_trash(_: &Path) -> artifacts::Result<()> {
+    Err(io::Error::from(io::ErrorKind::Unsupported).into())
 }
 
 fn shader_files(instance: &Path) -> io::Result<Vec<String>> {
@@ -263,6 +375,79 @@ mod tests {
         assert!(!settings.shader_config_ready);
         assert!(select_shader(instance, Some("Pack.zip")).is_err());
         assert!(!instance.join("config/iris.properties").exists());
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn toggles_local_mods_without_overwriting_or_touching_managed_files() {
+        let root = tempfile::tempdir().unwrap();
+        let distribution = Distribution::local(&root.path().join("missing.json")).unwrap();
+        let server = distribution
+            .servers
+            .iter()
+            .find(|server| server.id == "BurcomPvP-26.3")
+            .unwrap();
+        let instance = root.path();
+        let mods = instance.join("mods");
+        fs::create_dir_all(mods.join("26.3")).unwrap();
+        let enabled = Path::new("26.3").join("테스트.jar");
+        let disabled = enabled.with_file_name("테스트.jar.disabled");
+        fs::write(mods.join(&enabled), b"mod").unwrap();
+        fs::write(mods.join(&disabled), b"collision").unwrap();
+        assert!(change_local_mod(server, instance, &enabled, LocalModAction::Disable).is_err());
+        assert_eq!(fs::read(mods.join(&enabled)).unwrap(), b"mod");
+        assert_eq!(fs::read(mods.join(&disabled)).unwrap(), b"collision");
+        fs::remove_file(mods.join(&disabled)).unwrap();
+        assert_eq!(
+            change_local_mod(server, instance, &enabled, LocalModAction::Disable).unwrap(),
+            Some(disabled.clone())
+        );
+        assert!(!mods.join(&enabled).exists());
+        assert_eq!(
+            change_local_mod(server, instance, &disabled, LocalModAction::Enable).unwrap(),
+            Some(enabled.clone())
+        );
+        assert_eq!(fs::read(mods.join(&enabled)).unwrap(), b"mod");
+        let managed = Path::new("FABRIC-API-0.163.0+26.3.JAR");
+        fs::write(mods.join(managed), b"required").unwrap();
+        assert!(change_local_mod(server, instance, managed, LocalModAction::Trash).is_err());
+        assert!(change_local_mod(
+            server,
+            instance,
+            Path::new("../world.jar"),
+            LocalModAction::Trash
+        )
+        .is_err());
+        assert_eq!(fs::read(mods.join(managed)).unwrap(), b"required");
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    #[ignore = "uses the host Trash; run on a disposable CI runner"]
+    fn sends_only_the_selected_mod_to_os_trash() {
+        let root = tempfile::tempdir().unwrap();
+        let distribution = Distribution::local(&root.path().join("missing.json")).unwrap();
+        let server = distribution.servers.first().unwrap();
+        let mods = root.path().join("mods");
+        fs::create_dir(&mods).unwrap();
+        let selected = format!(
+            "alice-ci-{}.jar",
+            root.path().file_name().unwrap().to_string_lossy()
+        );
+        fs::write(mods.join(&selected), b"selected").unwrap();
+        fs::write(mods.join("other.jar"), b"other").unwrap();
+        assert_eq!(
+            change_local_mod(
+                server,
+                root.path(),
+                Path::new(&selected),
+                LocalModAction::Trash
+            )
+            .unwrap(),
+            None
+        );
+        assert!(!mods.join(selected).exists());
+        assert_eq!(fs::read(mods.join("other.jar")).unwrap(), b"other");
     }
 
     #[test]

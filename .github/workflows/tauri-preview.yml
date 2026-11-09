@@ -34,6 +34,8 @@ jobs:
           npm run lint -- --rule '@stylistic/linebreak-style: off'
       - run: npm run tauri:ui
       - run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml
+      - name: Verify local mod removal uses the system Trash
+        run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml sends_only_the_selected_mod_to_os_trash -- --ignored
       - if: runner.os == 'Windows'
         run: npm run tauri -- build --ci --no-bundle -- --locked
       - name: Verify the Windows login screen

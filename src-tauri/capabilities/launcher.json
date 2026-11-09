@@ -20,6 +20,7 @@
     "allow-save-game-settings",
     "allow-open-game-folder",
     "allow-mod-settings",
+    "allow-change-local-mod",
     "allow-open-instance-folder",
     "allow-select-shaderpack",
     "allow-microsoft-sign-out",

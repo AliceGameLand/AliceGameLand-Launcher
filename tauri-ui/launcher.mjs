@@ -133,10 +133,13 @@ function modRow(name, enabled, state) {
     const label = document.createElement('span')
     label.className = 'settingsModName'
     label.textContent = name
-    const status = document.createElement('span')
-    status.className = 'settingsModRequired'
-    status.textContent = state
-    content.append(label, status)
+    content.append(label)
+    if (state) {
+        const status = document.createElement('span')
+        status.className = 'settingsModRequired'
+        status.textContent = state
+        content.append(status)
+    }
     row.append(content)
     return row
 }
@@ -148,14 +151,69 @@ function bindMods(settingsDone) {
     const shaderNote = byId('settingsShaderpackDesc')
     const shaderSelect = byId('settingsShadersSelect')
     const inventory = byId('settingsModsContainer')
+    const openMods = byId('settingsDropinFileSystemButton')
     let request = 0
     let savedShader = ''
     let savingShader = false
+    let changingMod = false
     function visible() {
         return visibleView === 'settingsContainer' && tab.hasAttribute('selected')
     }
+    function localRow({ file, name, enabled }) {
+        const row = modRow(name, enabled)
+        const actions = document.createElement('div')
+        actions.className = 'settingsModActions'
+        const remove = document.createElement('button')
+        remove.type = 'button'
+        remove.className = 'settingsDropinRemoveButton'
+        remove.textContent = '삭제'
+        remove.setAttribute('aria-label', name + ' 휴지통으로 이동')
+        const toggle = document.createElement('label')
+        toggle.className = 'toggleSwitch'
+        const input = document.createElement('input')
+        input.type = 'checkbox'
+        input.setAttribute('role', 'switch')
+        input.setAttribute('aria-label', name)
+        input.checked = enabled
+        const slider = document.createElement('span')
+        slider.className = 'toggleSwitchSlider'
+        toggle.append(input, slider)
+        actions.append(remove, toggle)
+        row.firstElementChild.append(actions)
+
+        async function update(action, control) {
+            if (changingMod) return
+            changingMod = true
+            local.inert = true
+            request++
+            inventory.removeAttribute('aria-busy')
+            let failure
+            try {
+                const updated = await core.invoke('change_local_mod', { serverId: activeServer.id, file, action })
+                if (updated === null) row.remove()
+                else {
+                    file = updated
+                    enabled = action === 'enable'
+                    row.toggleAttribute('enabled', enabled)
+                }
+            } catch (error) {
+                failure = error
+            } finally {
+                input.checked = enabled
+                local.inert = false
+                changingMod = false
+            }
+            if (!visible()) return
+            if (failure) showError('개인 모드를 변경하지 못했어요', failure, control)
+            else (control.isConnected ? control : openMods).focus()
+        }
+
+        input.addEventListener('change', () => update(input.checked ? 'enable' : 'disable', input))
+        remove.addEventListener('click', () => update('trash', remove))
+        return row
+    }
     async function refresh() {
-        if (!visible() || savingShader) return
+        if (!visible() || savingShader || changingMod) return
         const refreshId = ++request
         modsPanel.querySelector('.settingsSelServContent').textContent = activeServer.name
         inventory.setAttribute('aria-busy', 'true')
@@ -163,7 +221,7 @@ function bindMods(settingsDone) {
             const mods = await core.invoke('mod_settings', { serverId: activeServer.id })
             if (refreshId !== request || !visible()) return
             required.replaceChildren(...mods.required.map(name => modRow(name, true, '항상 켜짐')))
-            local.replaceChildren(...mods.local.map(({ name, enabled }) => modRow(name, enabled, enabled ? '켜짐' : '꺼짐')))
+            local.replaceChildren(...mods.local.map(localRow))
             savedShader = mods.selectedShader ?? ''
             const options = [new window.Option('끄기', ''), ...mods.shaders.map(name => new window.Option(name, name))]
             if (savedShader && !mods.shaders.includes(savedShader)) {
@@ -183,6 +241,7 @@ function bindMods(settingsDone) {
             if (refreshId === request) inventory.removeAttribute('aria-busy')
         }
     }
+    byId('settingsDropinRefreshNote').textContent = '폴더에 파일을 추가한 뒤 이 탭으로 돌아오거나 F5를 누르세요. 켜기·끄기는 바로 저장돼요.'
     shaderSelect.disabled = true
     shaderSelect.addEventListener('change', async () => {
         const shader = shaderSelect.value

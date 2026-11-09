@@ -51,6 +51,19 @@ impl Launcher {
         let instance = self.data_directory()?.join("instances").join(&server.id);
         Ok((server, instance))
     }
+
+    fn mod_instance(&self, server_id: &str) -> Result<(Server, PathBuf), String> {
+        let (server, instance) = self.instance(server_id)?;
+        let current =
+            Distribution::local(&self.preferences_path.with_file_name("distribution.json"))
+                .map_err(|_| "배포 목록을 읽지 못했어요.")?;
+        let server = current
+            .servers
+            .into_iter()
+            .find(|server| server.id == server_id)
+            .unwrap_or_else(|| server.clone());
+        Ok((server, instance))
+    }
 }
 
 #[derive(Serialize)]
@@ -280,9 +293,25 @@ fn mod_settings(
     server_id: String,
     launcher: State<'_, Launcher>,
 ) -> Result<instance_settings::ModSettings, String> {
-    let (server, instance) = launcher.instance(&server_id)?;
-    instance_settings::ModSettings::load(server, &instance)
+    let (server, instance) = launcher.mod_instance(&server_id)?;
+    instance_settings::ModSettings::load(&server, &instance)
         .map_err(|_| "모드 폴더를 읽지 못했어요.".into())
+}
+
+#[tauri::command]
+async fn change_local_mod(
+    server_id: String,
+    file: PathBuf,
+    action: instance_settings::LocalModAction,
+    launcher: State<'_, Launcher>,
+) -> Result<Option<PathBuf>, String> {
+    let (server, instance) = launcher.mod_instance(&server_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        instance_settings::change_local_mod(&server, &instance, &file, action)
+    })
+    .await
+    .map_err(|_| "개인 모드 변경이 중단됐어요.")?
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -430,6 +459,7 @@ fn main() {
             save_game_settings,
             open_game_folder,
             mod_settings,
+            change_local_mod,
             open_instance_folder,
             select_shaderpack,
             auth::microsoft_sign_out,

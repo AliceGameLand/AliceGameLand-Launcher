@@ -14,6 +14,7 @@ fn main() {
             "save_game_settings",
             "open_game_folder",
             "mod_settings",
+            "change_local_mod",
             "open_instance_folder",
             "select_shaderpack",
             "microsoft_sign_out",
