@@ -14,9 +14,10 @@ mod wizard;
 use std::{path::PathBuf, sync::Mutex};
 
 use distribution::{Distribution, Server};
-use preferences::{heap_megabytes, GameSettings, JavaOptions, Preferences};
+use preferences::{heap_megabytes, GameSettings, JavaOptions, Preferences, Settings};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 struct Launcher {
     servers: Vec<Server>,
@@ -76,12 +77,46 @@ async fn server_status(
 }
 
 #[tauri::command]
-fn game_settings(launcher: State<'_, Launcher>) -> Result<GameSettings, String> {
+fn game_settings(launcher: State<'_, Launcher>) -> Result<Settings, String> {
     let preferences = launcher
         .preferences
         .lock()
         .map_err(|_| "런처 설정을 읽지 못했어요.")?;
-    Ok(preferences.game_settings().clone())
+    Ok(preferences.settings().clone())
+}
+
+#[tauri::command]
+async fn choose_game_folder(
+    window: tauri::WebviewWindow,
+    launcher: State<'_, Launcher>,
+) -> Result<Option<PathBuf>, String> {
+    let current = launcher
+        .preferences
+        .lock()
+        .map_err(|_| "런처 설정을 읽지 못했어요.")?
+        .game_data_dir()
+        .map(std::path::Path::to_path_buf);
+    let mut picker = window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("게임 폴더 선택");
+    if let Some(current) = current.filter(|path| path.is_dir()) {
+        picker = picker.set_directory(current);
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    picker.pick_folder(move |choice| {
+        let _ = sender.send(choice);
+    });
+    receiver
+        .await
+        .map_err(|_| "폴더 선택 창을 열지 못했어요.")?
+        .map(|choice| {
+            choice
+                .into_path()
+                .map_err(|_| "게임 폴더 경로를 읽지 못했어요.".into())
+        })
+        .transpose()
 }
 
 #[derive(Serialize)]
@@ -144,6 +179,7 @@ struct JavaSettingsChange {
 fn save_game_settings(
     settings: GameSettings,
     java: Option<JavaSettingsChange>,
+    data_directory: Option<PathBuf>,
     launcher: State<'_, Launcher>,
 ) -> Result<(), String> {
     if [settings.res_width, settings.res_height]
@@ -177,12 +213,18 @@ fn save_game_settings(
         }
         None => None,
     };
+    if data_directory
+        .as_ref()
+        .is_some_and(|path| !path.is_absolute() || !path.is_dir())
+    {
+        return Err("선택한 게임 폴더에 접근할 수 없어요.".into());
+    }
     let mut preferences = launcher
         .preferences
         .lock()
         .map_err(|_| "런처 설정을 읽지 못했어요.")?;
     preferences
-        .update_game_settings(settings, java, &launcher.preferences_path)
+        .update_game_settings(settings, java, data_directory, &launcher.preferences_path)
         .map_err(|_| "게임 설정을 저장하지 못했어요.".into())
 }
 
@@ -275,6 +317,7 @@ fn main() {
         Err(_) => std::process::exit(2),
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let test_profile = test_profile()?;
             let (profile, data_root) = match test_profile {
@@ -299,6 +342,7 @@ fn main() {
             server_status,
             play_server,
             game_settings,
+            choose_game_folder,
             java_settings,
             save_game_settings,
             open_game_folder,

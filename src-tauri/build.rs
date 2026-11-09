@@ -6,6 +6,7 @@ fn main() {
             "server_status",
             "play_server",
             "game_settings",
+            "choose_game_folder",
             "java_settings",
             "save_game_settings",
             "open_game_folder",

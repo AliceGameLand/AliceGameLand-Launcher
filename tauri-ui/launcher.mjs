@@ -21,8 +21,13 @@ let activeServer
 let activeProfile
 let visibleView
 let statusRequest = 0
+let selectedGameDirectory = null
 const javaSettings = createJavaSettings(document)
 const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
+const launcherSettings = byId('settingsTabLauncher')
+const gameDirectory = launcherSettings.querySelector('[cValue=DataDirectory]')
+const chooseGameDirectory = launcherSettings.querySelector('.settingsFileSelButton')
+const allowPrerelease = launcherSettings.querySelector('[cValue=AllowPrerelease]')
 const gameFields = {
     resWidth: byId('settingsGameWidth'),
     resHeight: byId('settingsGameHeight'),
@@ -164,10 +169,13 @@ async function openSettings(id, source) {
         ])
         javaSettings.load(activeServer, java)
         for (const [key, field] of Object.entries(gameFields)) {
-            const value = saved[key] ?? gameDefaults[key]
+            const value = saved.game[key] ?? gameDefaults[key]
             if (field.type === 'checkbox') field.checked = value
             else field.value = value
         }
+        selectedGameDirectory = null
+        gameDirectory.value = saved.launcher.dataDirectory ?? ''
+        allowPrerelease.checked = saved.launcher.allowPrerelease ?? false
         showSettingsAccount()
         selectSettingsTab(id)
         showView('settingsContainer')
@@ -242,9 +250,27 @@ try {
     accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
     for (const tab of settingsTabs) {
         const id = tab.getAttribute('rSc')
-        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft', 'settingsTabJava'].includes(id)
+        tab.disabled = !['settingsTabAccount', 'settingsTabMinecraft', 'settingsTabJava', 'settingsTabLauncher'].includes(id)
         tab.addEventListener('click', () => selectSettingsTab(id))
     }
+    allowPrerelease.disabled = true
+    launcherSettings.querySelector('.settingsFileSelDesc').textContent = '게임 파일은 이 폴더에 저장돼요. 폴더를 바꾸면 기존 파일은 원래 위치에 남아요.'
+    chooseGameDirectory.addEventListener('click', async () => {
+        chooseGameDirectory.disabled = true
+        settingsDone.disabled = true
+        try {
+            const directory = await core.invoke('choose_game_folder')
+            if (directory) {
+                selectedGameDirectory = directory
+                gameDirectory.value = directory
+            }
+        } catch (error) {
+            showError('게임 폴더를 선택하지 못했어요', error, chooseGameDirectory)
+        } finally {
+            chooseGameDirectory.disabled = false
+            settingsDone.disabled = false
+        }
+    })
     const changeAccount = byId('settingsAddMicrosoftAccount')
     changeAccount.textContent = '다른 계정으로 로그인'
     changeAccount.addEventListener('click', async event => {
@@ -267,7 +293,11 @@ try {
         ]))
         settingsDone.disabled = true
         try {
-            await core.invoke('save_game_settings', { settings, java: javaSettings.change() })
+            await core.invoke('save_game_settings', {
+                settings,
+                java: javaSettings.change(),
+                dataDirectory: selectedGameDirectory
+            })
             showView('landingContainer')
             settingsButton.focus()
         } catch (error) {

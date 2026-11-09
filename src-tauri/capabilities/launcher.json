@@ -12,6 +12,7 @@
     "allow-server-status",
     "allow-play-server",
     "allow-game-settings",
+    "allow-choose-game-folder",
     "allow-java-settings",
     "allow-save-game-settings",
     "allow-open-game-folder",

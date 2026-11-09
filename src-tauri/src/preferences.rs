@@ -19,9 +19,9 @@ pub struct Preferences {
     java_config: BTreeMap<String, JavaOptions>,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
-struct Settings {
+pub struct Settings {
     game: GameSettings,
     launcher: LauncherSettings,
 }
@@ -36,7 +36,7 @@ pub struct GameSettings {
     pub launch_detached: Option<bool>,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 struct LauncherSettings {
     allow_prerelease: Option<bool>,
@@ -96,14 +96,15 @@ impl Preferences {
         )
     }
 
-    pub fn game_settings(&self) -> &GameSettings {
-        &self.settings.game
+    pub fn settings(&self) -> &Settings {
+        &self.settings
     }
 
     pub fn update_game_settings(
         &mut self,
         settings: GameSettings,
         java: Option<(String, JavaOptions)>,
+        data_directory: Option<PathBuf>,
         path: &Path,
     ) -> io::Result<()> {
         let previous = std::mem::replace(&mut self.settings.game, settings);
@@ -111,8 +112,13 @@ impl Preferences {
             let previous = self.java_config.insert(server_id.clone(), options);
             (server_id, previous)
         });
+        let previous_directory = data_directory
+            .map(|directory| self.settings.launcher.data_directory.replace(directory));
         if let Err(error) = self.save(path) {
             self.settings.game = previous;
+            if let Some(directory) = previous_directory {
+                self.settings.launcher.data_directory = directory;
+            }
             match previous_java {
                 Some((server_id, Some(options))) => {
                     self.java_config.insert(server_id, options);
@@ -220,9 +226,10 @@ mod tests {
     }
 
     #[test]
-    fn saves_java_and_game_settings_together() {
+    fn saves_java_game_and_directory_settings_together() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("settings.json");
+        let directory = root.path().join("게임 폴더");
         let mut preferences = Preferences::default();
         let game = GameSettings {
             fullscreen: Some(true),
@@ -234,16 +241,23 @@ mod tests {
             jvm_options: Some(vec!["-Dexample=one value".into()]),
         };
         preferences
-            .update_game_settings(game, Some(("alice".into(), java)), &path)
+            .update_game_settings(
+                game,
+                Some(("alice".into(), java)),
+                Some(directory.clone()),
+                &path,
+            )
             .unwrap();
 
         let mut reopened = Preferences::load(&path, root.path()).unwrap();
         let error = reopened.update_game_settings(
             GameSettings::default(),
             Some(("alice".into(), JavaOptions::default())),
+            Some(root.path().join("another-folder")),
             &path.join("not-a-directory"),
         );
         assert!(error.is_err());
+        assert_eq!(reopened.game_data_dir(), Some(directory.as_path()));
         let (game, java) = reopened.launch_settings("alice");
         assert_eq!(game.fullscreen, Some(true));
         assert_eq!(java.min_ram.as_deref(), Some("3072M"));
