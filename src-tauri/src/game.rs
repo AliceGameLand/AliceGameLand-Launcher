@@ -273,13 +273,17 @@ pub struct Launch {
     pub java_options: JavaOptions,
 }
 
-pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str>) -> Result<u32> {
-    let running = RunningGame::reserve(launch.server_id.clone())?;
-    let _preparation = PREPARATION
-        .try_lock()
-        .map_err(|_| "다른 서버의 파일을 준비하고 있어요.")?;
-    let (server, java) =
-        prepare_files(&launch.profile, &launch.root, &launch.server_id, &progress)?;
+struct PreparedLaunch {
+    command: Command,
+    natives: tempfile::TempDir,
+}
+
+fn prepare_launch(
+    launch: Launch,
+    session: GameSession,
+    progress: &Channel<&'static str>,
+) -> Result<PreparedLaunch> {
+    let (server, java) = prepare_files(&launch.profile, &launch.root, &launch.server_id, progress)?;
     let common = launch.root.join("common");
     let libraries = common.join("libraries");
     let loader = server.loader(&launch.root)?;
@@ -395,16 +399,30 @@ pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str
     }
     args.extend(write_mod_list(&instance, &loader)?);
     set_game_options(&instance, fullscreen)?;
-    let _ = progress.send("게임 시작 중");
-    let mut child = Command::new(java)
+    let mut command = Command::new(java);
+    command
         .args(args)
         .current_dir(instance)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+    Ok(PreparedLaunch { command, natives })
+}
+
+pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str>) -> Result<u32> {
+    let running = RunningGame::reserve(launch.server_id.clone())?;
+    let _preparation = PREPARATION
+        .try_lock()
+        .map_err(|_| "다른 서버의 파일을 준비하고 있어요.")?;
+    let detached = launch.settings.launch_detached.unwrap_or(true);
+    let PreparedLaunch {
+        mut command,
+        natives,
+    } = prepare_launch(launch, session, &progress)?;
+    let _ = progress.send("게임 시작 중");
+    let mut child = command.spawn()?;
     let pid = child.id();
-    if launch.settings.launch_detached.unwrap_or(true) {
+    if detached {
         std::thread::spawn(move || {
             let _ = child.wait();
             drop(natives);
@@ -436,6 +454,79 @@ pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "downloads the live Minecraft distribution and installs the NeoForge client loader"]
+    fn prepares_real_fabric_and_neoforge_launches() -> Result<()> {
+        let temporary = tempfile::tempdir()?;
+        let profile = temporary.path().join("profile");
+        let root = temporary.path().join("앨리스 게임 폴더");
+        let progress = Channel::new(|message| {
+            if let tauri::ipc::InvokeResponseBody::Json(stage) = message {
+                eprintln!("{stage}");
+            }
+            Ok(())
+        });
+        for (server, mod_argument) in [
+            ("AliceGameLand-26.2", "--fml.modLists"),
+            ("BurcomPvP-26.3", "--fabric.addMods"),
+        ] {
+            let instance = root.join("instances").join(server);
+            fs::create_dir_all(&instance)?;
+            fs::write(
+                instance.join("options.txt"),
+                "guiScale:3\ntutorialStep:movement\n",
+            )?;
+            let launch = Launch {
+                profile: profile.clone(),
+                root: root.clone(),
+                server_id: server.into(),
+                launcher_version: "1.0.41".into(),
+                settings: GameSettings::default(),
+                java_options: JavaOptions::default(),
+            };
+            let session = GameSession {
+                profile: crate::auth::Profile {
+                    id: "00000000000000000000000000000000".into(),
+                    name: "LaunchFixture".into(),
+                },
+                access_token: "fixture-only".into(),
+                client_id: "fixture-only".into(),
+                xuid: None,
+            };
+            let prepared = prepare_launch(launch, session, &progress)
+                .map_err(|error| format!("{server}: {error}"))?;
+            assert!(profile.join("distribution.json").is_file());
+            let command = prepared.command;
+            let args: Vec<_> = command.get_args().collect();
+            let cached_java =
+                java::cached_executable(&profile.join("java")).ok_or("Java cache is missing")?;
+            assert_eq!(Path::new(command.get_program()), cached_java);
+            assert_eq!(command.get_current_dir(), Some(instance.as_path()));
+            assert!(args.iter().any(|arg| *arg == mod_argument));
+            assert_eq!(
+                args.iter().any(|arg| *arg == "-XstartOnFirstThread"),
+                cfg!(target_os = "macos")
+            );
+            let classpath = args
+                .windows(2)
+                .find(|pair| pair[0] == "-cp")
+                .ok_or("Launch classpath is missing")?[1];
+            for jar in env::split_paths(classpath) {
+                assert!(jar.is_file(), "Missing runtime library {}", jar.display());
+            }
+            assert!(fs::read_dir(prepared.natives.path().join("java"))?
+                .next()
+                .is_some());
+            let options = fs::read_to_string(instance.join("options.txt"))?;
+            assert!(options.contains("guiScale:3\n"));
+            assert!(options.contains("tutorialStep:none\n"));
+            println!(
+                "Prepared {server} with verified Java, Minecraft, loader, natives and settings"
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn expands_multiple_placeholders_without_reprocessing_user_input() {

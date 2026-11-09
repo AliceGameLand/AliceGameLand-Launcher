@@ -13,6 +13,10 @@ on:
         description: Download and verify the pinned Java runtime on both platforms
         type: boolean
         default: false
+      game_files:
+        description: Prepare live NeoForge and Fabric game files without starting Minecraft
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,6 +50,9 @@ jobs:
       - name: Verify first Java 25 download and cache reuse
         if: inputs.runtime || contains(github.event.head_commit.message, '[runtime]')
         run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml downloads_and_reuses_java_25 -- --ignored
+      - name: Verify real Minecraft and loader preparation
+        if: inputs.game_files || contains(github.event.head_commit.message, '[game-files]')
+        run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml prepares_real_fabric_and_neoforge_launches -- --ignored --nocapture
       - name: Verify local mod removal uses the system Trash
         run: cargo test --release --locked --manifest-path src-tauri/Cargo.toml sends_only_the_selected_mod_to_os_trash -- --ignored
       - if: runner.os == 'Windows'
