@@ -73,12 +73,6 @@ jobs:
           node scripts/test-tauri-update.mjs $setup.FullName
       - if: runner.os == 'macOS'
         run: npm run tauri -- build --ci -- --locked
-      - name: Verify the signed macOS package replaces an installed app
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          app=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
-          node scripts/test-tauri-update.mjs "$app"
       - if: runner.os == 'macOS'
         shell: bash
         run: |
@@ -93,6 +87,7 @@ jobs:
           executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
           launcher="$app/Contents/MacOS/$executable"
           test "$(lipo -archs "$launcher")" = arm64
+          node scripts/test-tauri-update.mjs "$app"
           printf '%s\n' '{"settings":{"game":{"fullscreen":true}},"authenticationDatabase":{"fixture":true}}' > "$profile/앨리스의 게임랜드/config.json"
           ALICE_TAURI_TEST_PROFILE="$profile" ALICE_TAURI_VERIFY_LOGIN=1 "$launcher" > "$profile/startup.log" 2>&1 &
           pid=$!

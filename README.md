@@ -76,7 +76,7 @@ npm run dist:setup
 
 ### Tauri 미리보기 업데이트 준비
 
-Windows x64에서는 `npm run tauri -- build --no-bundle` 후 `node scripts/build-tauri-setup.mjs`를 실행합니다. Apple Silicon에서는 `npm run tauri -- build`로 DMG를 만들고 `src-tauri/target/release/bundle/macos`의 앱 번들을 `.app.tar.gz`로 압축합니다.
+Windows x64에서는 `npm run tauri -- build --no-bundle` 후 `node scripts/build-tauri-setup.mjs`를 실행합니다. Apple Silicon에서는 `npm run tauri -- build --bundles app,dmg`로 DMG와 앱 번들을 만들고 `src-tauri/target/release/bundle/macos`의 앱 번들을 `.app.tar.gz`로 압축합니다.
 
 업데이트를 사용할 빌드에는 빌드 전에 `ALICE_TAURI_UPDATE_PUBLIC_KEY`에 Tauri 공개 키 내용을 설정합니다. 두 플랫폼의 패키지를 준비한 뒤 서명 키를 `TAURI_SIGNING_PRIVATE_KEY_PATH` 또는 `TAURI_SIGNING_PRIVATE_KEY`에 지정하고 아래 명령을 실행합니다.
 
