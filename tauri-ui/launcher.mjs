@@ -305,6 +305,7 @@ function bindUpdates({ version, updatesAvailable }) {
     const label = byId('settingsUpdateDownloadLabel')
     const percentage = byId('settingsUpdateDownloadPercent')
     const size = byId('settingsUpdateDownloadSize')
+    const reminder = byId('launcherUpdateButton')
     const mib = bytes => (bytes / 1024 ** 2).toFixed(1) + ' MiB'
     let release
     let busy = false
@@ -314,6 +315,7 @@ function bindUpdates({ version, updatesAvailable }) {
     button.disabled = !updatesAvailable
     notes.style.whiteSpace = 'pre-wrap'
     if (!updatesAvailable) return
+    reminder.addEventListener('click', () => openSettings('settingsTabUpdate', reminder))
 
     function showRelease() {
         const current = release?.version ?? version
@@ -324,6 +326,7 @@ function bindUpdates({ version, updatesAvailable }) {
         byId('settingsUpdateVersionCheck').toggleAttribute('data-prerelease', prerelease)
         changelog.hidden = !release?.notes
         notes.textContent = release?.notes ?? ''
+        reminder.hidden = !release
         button.textContent = release ? '업데이트 받기' : '업데이트 확인'
     }
 
@@ -381,6 +384,7 @@ function bindUpdates({ version, updatesAvailable }) {
     button.addEventListener('click', install)
     window.setTimeout(check, 1500)
     window.setInterval(check, 30 * 60 * 1000)
+    return check
 }
 
 function bindAbout(version) {
@@ -471,7 +475,8 @@ async function openSettings(id, source) {
         }
         selectedGameDirectory = null
         gameDirectory.value = saved.launcher.dataDirectory ?? ''
-        allowPrerelease.checked = saved.launcher.allowPrerelease ?? false
+        allowPrerelease.defaultChecked = saved.launcher.allowPrerelease ?? false
+        allowPrerelease.checked = allowPrerelease.hasAttribute('data-required') || allowPrerelease.defaultChecked
         showSettingsAccount()
         selectSettingsTab(id)
         showView('settingsContainer')
@@ -539,7 +544,7 @@ try {
     setActiveServer(initial)
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
     bindAbout(snapshot.version)
-    bindUpdates(snapshot)
+    const refreshUpdates = bindUpdates(snapshot)
 
     const settingsButton = byId('settingsMediaButton')
     const accountButton = byId('avatarOverlay')
@@ -551,7 +556,9 @@ try {
         tab.addEventListener('click', () => selectSettingsTab(id))
     }
     bindMods(settingsDone)
-    allowPrerelease.disabled = !snapshot.updatesAvailable || snapshot.version.split('+')[0].includes('-')
+    const prerelease = snapshot.version.split('+')[0].includes('-')
+    allowPrerelease.toggleAttribute('data-required', prerelease)
+    allowPrerelease.disabled = !snapshot.updatesAvailable || prerelease
     launcherSettings.querySelector('.settingsFileSelDesc').textContent = '게임 파일은 이 폴더에 저장돼요. 폴더를 바꾸면 기존 파일은 원래 위치에 남아요.'
     chooseGameDirectory.addEventListener('click', async () => {
         chooseGameDirectory.disabled = true
@@ -591,12 +598,14 @@ try {
         ]))
         settingsDone.disabled = true
         try {
+            const prereleaseChanged = !allowPrerelease.disabled && allowPrerelease.checked !== allowPrerelease.defaultChecked
             await core.invoke('save_game_settings', {
                 settings,
                 java: javaSettings.change(),
                 dataDirectory: selectedGameDirectory,
                 allowPrerelease: allowPrerelease.disabled ? null : allowPrerelease.checked
             })
+            if (prereleaseChanged) void refreshUpdates?.()
             showView('landingContainer')
             settingsButton.focus()
         } catch (error) {
