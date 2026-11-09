@@ -23,6 +23,7 @@ for (const area of document.querySelectorAll('.frame-brand, .frame-spacer')) {
 }
 
 function showView(id) {
+    byId('main').style.display = 'block'
     for (const view of ['loginOptionsContainer', 'waitingContainer', 'serverSetupContainer', 'landingContainer']) {
         byId(view).style.display = view === id ? 'grid' : 'none'
     }
