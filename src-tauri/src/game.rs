@@ -541,7 +541,10 @@ mod tests {
                 java::cached_executable(&profile.join("java")).ok_or("Java cache is missing")?;
             assert_eq!(Path::new(command.get_program()), cached_java);
             assert_eq!(command.get_current_dir(), Some(instance.as_path()));
-            assert!(args.iter().any(|arg| *arg == main_class));
+            let main = args
+                .iter()
+                .position(|arg| *arg == main_class)
+                .ok_or("Loader entry point is missing")?;
             assert!(fs::read_dir(instance.join("mods"))?
                 .filter_map(std::result::Result::ok)
                 .any(|entry| entry
@@ -572,6 +575,25 @@ mod tests {
             let options = fs::read_to_string(instance.join("options.txt"))?;
             assert!(options.contains("guiScale:3\n"));
             assert!(options.contains("tutorialStep:none\n"));
+            fs::write(
+                instance.join("CheckLaunch.java"),
+                r#"class CheckLaunch {
+    public static void main(String[] args) throws Exception {
+        Class.forName(args[0], false, ClassLoader.getSystemClassLoader())
+             .getMethod("main", String[].class);
+    }
+}"#,
+            )?;
+            let probe = java::command(&cached_java)
+                .args(&args[..main])
+                .args(["CheckLaunch.java", main_class])
+                .current_dir(&instance)
+                .output()?;
+            assert!(
+                probe.status.success(),
+                "{server} could not load the loader entry point: {}",
+                String::from_utf8_lossy(&probe.stderr)
+            );
             println!(
                 "Prepared {server} with verified Java, Minecraft, loader, natives and settings"
             );
