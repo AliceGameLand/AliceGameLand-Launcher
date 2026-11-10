@@ -20,7 +20,7 @@ const launcherName = '앨리스의 게임랜드.exe'
 const key = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\3d6e8bdf-a47b-5327-b17b-ac5678029a9c'
 const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'Alice 업데이트 QA '))
 const sha = async file => createHash('sha256').update(await fs.readFile(file)).digest('hex')
-const expected = await sha(path.join(unpacked, launcherName))
+const scopeToVerify = process.env.QA_SCOPE
 const { findUpdateTarget } = require('../installer/update-target.cjs')
 const userData = path.join(process.env.APPDATA, '.alicegameland', 'qa-user-file.txt')
 await fs.mkdir(path.dirname(userData), { recursive:true })
@@ -31,16 +31,36 @@ function run(executable, args, options = {}) {
     const result = spawnSync(executable, args, { cwd:fixture, timeout:180000, windowsHide:true, ...options })
     if(result.status !== 0) throw Error(executable + ': ' + (result.error ?? result.status))
 }
+async function extractEmbedded(executable, destination, output, files) {
+    const bytes = await fs.readFile(executable)
+    const signature = Buffer.from('377abcaf271c0004', 'hex')
+    const offset = bytes.indexOf(signature)
+    assert(offset >= 0)
+    const size = 32 + Number(bytes.readBigUInt64LE(offset + 12)) + Number(bytes.readBigUInt64LE(offset + 20))
+    assert(offset + size <= bytes.length && size > 100_000_000)
+    await fs.writeFile(destination, bytes.subarray(offset, offset + size))
+    run(require('7zip-bin').path7za, ['x', destination, '-o' + output, '-y', ...files])
+}
+await extractEmbedded(path.join(output, release), path.join(fixture, 'new.7z'), unpacked, [launcherName, 'resources/java-launch/*'])
+const expected = await sha(path.join(unpacked, launcherName))
+
+if(scopeToVerify === 'java') {
+    process.resourcesPath = path.join(unpacked, 'resources')
+    const guard = require(path.resolve('node_modules/helios-core/dist/java/JavaGuard.js'))
+    guard.getValidatableJavaPaths = async () => []
+    const java = require('../app/assets/js/javaruntime.js')
+    const dataDirectory = path.join(fixture, '한글 경로')
+    const options = { dataDirectory, supported:'>=25 <26', suggestedMajor:25 }
+    const executable = await java.prepare(options)
+    assert(await java.describe(executable, options.supported, true))
+    assert.equal(await java.prepare(options, () => assert.fail('Unexpected redownload')), executable)
+    console.log('WINDOWS_UNICODE_JAVA_PASSED', path.basename(executable))
+    process.exit(0)
+}
+
 assert(!registry('HKCU') && !registry('HKLM'), 'Expected a clean test worker')
 run('gh.exe', ['release', 'download', 'v1.0.41', '-R', 'AliceGameLand/AliceGameLand-Launcher', '-p', 'alice-gameland-setup-1.0.41.exe', '-D', fixture], { stdio:'inherit' })
-const bytes = await fs.readFile(path.join(fixture, 'alice-gameland-setup-1.0.41.exe'))
-const signature = Buffer.from('377abcaf271c0004', 'hex')
-const offset = bytes.indexOf(signature)
-const size = 32 + Number(bytes.readBigUInt64LE(offset + 12)) + Number(bytes.readBigUInt64LE(offset + 20))
-assert(offset >= 0 && offset + size <= bytes.length && size > 100_000_000)
-const archive = path.join(fixture, 'outer.7z')
-await fs.writeFile(archive, bytes.subarray(offset, offset + size))
-run(require('7zip-bin').path7za, ['x', archive, '-o' + fixture, '-y', 'resources/payload/launcher.exe'])
+await extractEmbedded(path.join(fixture, 'alice-gameland-setup-1.0.41.exe'), path.join(fixture, 'old.7z'), fixture, ['resources/payload/launcher.exe'])
 const legacy = path.join(fixture, 'resources/payload/launcher.exe')
 assert.equal((await fs.stat(legacy)).size, 246946520)
 const feedSize = (await fs.stat(path.join(output, release))).size
@@ -84,6 +104,7 @@ app.whenReady().then(async () => {
 
 try {
     for(const [scope, hive] of [['allusers', 'HKLM'], ['currentuser', 'HKCU']]){
+        if(scope !== scopeToVerify) continue
         const target = path.join(fixture, scope, 'alice-gameland-launcher')
         const installed = path.join(target, launcherName)
         run(legacy, ['/S', '/' + scope, '/D=' + target], { windowsVerbatimArguments:true })
@@ -128,13 +149,3 @@ try {
     server.close()
 }
 
-process.resourcesPath = path.join(unpacked, 'resources')
-const guard = require(path.resolve('node_modules/helios-core/dist/java/JavaGuard.js'))
-guard.getValidatableJavaPaths = async () => []
-const java = require('../app/assets/js/javaruntime.js')
-const dataDirectory = path.join(fixture, '한글 경로')
-const options = { dataDirectory, supported:'>=25 <26', suggestedMajor:25 }
-const executable = await java.prepare(options)
-assert(await java.describe(executable, options.supported, true))
-assert.equal(await java.prepare(options, () => assert.fail('Unexpected redownload')), executable)
-console.log('WINDOWS_UNICODE_JAVA_PASSED', path.basename(executable))
