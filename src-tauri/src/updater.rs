@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 use crate::{game, Launcher};
 
 const PUBLIC_KEY: Option<&str> = option_env!("ALICE_TAURI_UPDATE_PUBLIC_KEY");
-const STABLE_FEED: &str = "https://github.com/AliceGameLand/AliceGameLand-Launcher/releases/download/tauri-stable-feed/tauri-update.json";
+const STABLE_FEED: &str = "https://github.com/AliceGameLand/AliceGameLand-Launcher/releases/latest/download/tauri-update.json";
 const PREVIEW_FEED: &str = "https://github.com/AliceGameLand/AliceGameLand-Launcher/releases/download/tauri-preview-feed/tauri-update.json";
 const MAX_PACKAGE: usize = 256 * 1024 * 1024;
 const UNAVAILABLE: &str = "이 빌드에서는 자동 업데이트를 사용할 수 없어요.";

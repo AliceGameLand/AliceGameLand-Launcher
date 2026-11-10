@@ -84,7 +84,7 @@ Windows x64에서는 `npm run tauri -- build --no-bundle` 후 `node scripts/buil
 node scripts/prepare-tauri-update.mjs WINDOWS_SETUP_EXE MACOS_APP_TAR_GZ
 ```
 
-`dist/tauri-update/`에 버전 서명이 적용된 패키지와 `tauri-update.json`이 생성됩니다. 패키지는 메타데이터가 가리키는 버전 태그에 올립니다. Windows 패키지만 배포할 때는 macOS 경로를 생략합니다. 안정 버전은 `tauri-stable-feed` 태그의 메타데이터를, 프리릴리스는 `tauri-preview-feed` 태그의 메타데이터를 확인합니다.
+`dist/tauri-update/`에 버전 서명이 적용된 패키지와 `tauri-update.json`이 생성됩니다. 패키지는 메타데이터가 가리키는 버전 태그에 올립니다. Windows 패키지만 배포할 때는 macOS 경로를 생략합니다. 안정 버전은 최신 릴리스의 메타데이터를, 프리릴리스는 `tauri-preview-feed` 태그의 메타데이터를 확인합니다.
 
 ### 주요 구조
 
