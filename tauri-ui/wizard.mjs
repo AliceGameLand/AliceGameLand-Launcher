@@ -4,10 +4,11 @@ const frame = windowApi.getCurrentWindow()
 const controls = { close: () => frame.close(), minimize: () => frame.minimize() }
 
 if (frame.label === 'setup-wizard') {
+    const info = await core.invoke('wizard_info')
     let onProgress
     window.setup = {
         ...controls,
-        info: () => core.invoke('wizard_info'),
+        info: () => Promise.resolve(info),
         folder: current => core.invoke('wizard_folder', { current }),
         install: options => {
             const progress = new core.Channel(onProgress)
@@ -17,7 +18,6 @@ if (frame.label === 'setup-wizard') {
         progress: callback => { onProgress = callback }
     }
     await import('./setup.mjs')
-    const info = await core.invoke('wizard_info')
     if (info.verifyElectronTransition) {
         const button = document.getElementById('install')
         await button.onclick()
