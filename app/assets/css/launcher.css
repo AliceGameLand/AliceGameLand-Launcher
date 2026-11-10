@@ -130,6 +130,8 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
     flex: none;
     background: transparent url("../images/icons/profile.svg") center / contain no-repeat;
 }
+#avatarContainer:has(img) { background-image: none; }
+#avatarContainer img { display: block; object-fit: contain; }
 #user_text { max-width: 126px; overflow: hidden; text-overflow: ellipsis; }
 .frame-controls { align-self: stretch; }
 .frameButton, .frameButtonDarwin { border: 0; background: transparent; color: var(--ink); }

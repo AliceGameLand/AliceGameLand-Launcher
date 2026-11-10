@@ -527,6 +527,7 @@ mod tests {
                 profile: crate::auth::Profile {
                     id: "00000000000000000000000000000000".into(),
                     name: "LaunchFixture".into(),
+                    skins: Vec::new(),
                 },
                 access_token: "fixture-only".into(),
                 client_id: "fixture-only".into(),

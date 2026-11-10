@@ -1,12 +1,14 @@
 /* global document, window */
 import serverArt from './assets/js/serverart.js.mjs'
 import serverIcon from './assets/js/servericon.js.mjs'
+import uiClick from './assets/js/uiclick.js.mjs'
 import artworkTransition from './assets/js/artworktransition.js.mjs'
 import { createJavaSettings } from './java-settings.mjs'
 
 const byId = id => document.getElementById(id)
 const { core, window: windowApi } = window.__TAURI__
 const frame = windowApi.getCurrentWindow()
+uiClick.bindUiClickSound(document, window)
 const transitionArtwork = artworkTransition.createArtworkTransition(document.querySelector('.home-art'))
 const loginButton = byId('loginOptionMicrosoft')
 const homeList = byId('homeServerList')
@@ -20,6 +22,8 @@ let needsServerSelection
 let activeServer
 let activeProfile
 let visibleView
+let viewFade
+let viewRevision = 0
 let homeInitialized = false
 let statusRequest = 0
 let selectedGameDirectory = null
@@ -47,7 +51,16 @@ for (const area of document.querySelectorAll('.frame-brand, .frame-spacer')) {
     area.setAttribute('data-tauri-drag-region', '')
 }
 
-function showView(id) {
+async function showView(id) {
+    const revision = ++viewRevision
+    viewFade?.cancel()
+    const animate = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (animate && visibleView && visibleView !== id) {
+        viewFade = byId(visibleView).animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' })
+        await viewFade.finished.catch(() => {})
+        if (revision !== viewRevision) return
+        viewFade.cancel()
+    }
     visibleView = id
     byId('main').style.display = 'block'
     for (const view of ['loginOptionsContainer', 'waitingContainer', 'serverSetupContainer', 'landingContainer', 'settingsContainer']) {
@@ -56,7 +69,11 @@ function showView(id) {
     byId('frameHomeActions').hidden = id !== 'landingContainer'
     byId('loadingContainer').hidden = true
     document.body.classList.remove('launcher-starting')
-    if (id === 'landingContainer') void refreshServerStatus()
+    if (animate) viewFade = byId(id).animate([{ opacity: 0 }, { opacity: 1 }], 200)
+    if (id === 'landingContainer') {
+        homeList.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+        void refreshServerStatus()
+    }
 }
 
 function showError(title, message, restoreFocus) {
@@ -113,14 +130,13 @@ async function showAuthenticated(profile) {
             await initializeHome()
             homeInitialized = true
         } catch (error) {
-            showView('loginOptionsContainer')
+            await showView('loginOptionsContainer')
             showError('런처 정보를 불러오지 못했어요', error, loginButton)
             return
         }
     }
-    activeProfile = profile
-    byId('user_text').textContent = profile.name
-    showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
+    setActiveProfile(profile)
+    await showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
     if (needsServerSelection) setupList.firstElementChild?.focus()
 }
 
@@ -434,10 +450,36 @@ function bindAbout(version) {
     })
 }
 
+function accountImage(profile, size) {
+    const image = document.createElement('img')
+    image.alt = ''
+    image.width = size
+    image.height = size
+    const fallback = 'assets/images/icons/profile.svg'
+    const uuid = profile.id.replaceAll('-', '')
+    const skin = profile.skins?.find(entry => entry.state === 'ACTIVE')
+    const texture = /^https?:\/\/textures\.minecraft\.net\/texture\/([a-f0-9]{32,64})$/i.exec(skin?.url)?.[1]
+    const id = texture ?? (/^[a-f0-9]{32}$/i.test(uuid) ? uuid : null)
+    image.src = id ? `https://mc-heads.net/head/${id}/${Math.max(32, size)}` : fallback
+    image.addEventListener('error', () => { image.src = fallback }, { once: true })
+    return image
+}
+
+function setActiveProfile(profile) {
+    activeProfile = profile
+    byId('user_text').textContent = profile?.name ?? ''
+    byId('avatarContainer').replaceChildren(...(profile ? [accountImage(profile, 22)] : []))
+}
+
 function showSettingsAccount() {
     const container = byId('settingsCurrentMicrosoftAccounts')
     const row = document.createElement('div')
     row.className = 'settingsAuthAccount'
+    const portrait = document.createElement('div')
+    portrait.className = 'settingsAuthAccountLeft'
+    const image = accountImage(activeProfile, 48)
+    image.className = 'settingsAuthAccountImage'
+    portrait.append(image)
     const body = document.createElement('div')
     body.className = 'settingsAuthAccountRight'
     const details = document.createElement('div')
@@ -455,8 +497,8 @@ function showSettingsAccount() {
         signOut.disabled = true
         try {
             await core.invoke('microsoft_sign_out')
-            activeProfile = null
-            showView('loginOptionsContainer')
+            setActiveProfile(null)
+            await showView('loginOptionsContainer')
             loginButton.focus()
         } catch (error) {
             showError('로그아웃하지 못했어요', error, signOut)
@@ -464,10 +506,27 @@ function showSettingsAccount() {
             signOut.disabled = false
         }
     })
-    details.append(name)
-    actions.append(signOut)
+    const identity = document.createElement('div')
+    identity.className = 'settingsAuthAccountDetailPane'
+    identity.append(name)
+    const uuid = document.createElement('details')
+    uuid.className = 'settingsAccountId'
+    const summary = document.createElement('summary')
+    summary.textContent = 'UUID'
+    const id = document.createElement('div')
+    id.className = 'settingsAuthAccountDetailValue'
+    id.textContent = activeProfile.id
+    uuid.append(summary, id)
+    details.append(identity, uuid)
+    const selected = document.createElement('button')
+    selected.type = 'button'
+    selected.className = 'settingsAuthAccountSelect'
+    selected.disabled = true
+    selected.setAttribute('selected', '')
+    selected.textContent = '선택된 계정 ✓'
+    actions.append(selected, signOut)
     body.append(details, actions)
-    row.append(body)
+    row.append(portrait, body)
     container.replaceChildren(row)
 }
 
@@ -490,7 +549,7 @@ async function openSettings(id, source) {
         allowPrerelease.checked = allowPrerelease.hasAttribute('data-required') || allowPrerelease.defaultChecked
         showSettingsAccount()
         selectSettingsTab(id)
-        showView('settingsContainer')
+        await showView('settingsContainer')
         settingsTabs.find(tab => tab.getAttribute('rSc') === id)?.focus()
     } catch (error) {
         showError('설정을 열지 못했어요', error, source)
@@ -532,7 +591,7 @@ function makeChoice(server, firstChoice = false) {
             setActiveServer(server)
             if (firstChoice) {
                 needsServerSelection = false
-                showView('landingContainer')
+                await showView('landingContainer')
                 homeList.querySelector('[aria-pressed="true"]')?.focus()
             }
         } catch {
@@ -593,8 +652,7 @@ async function initializeHome() {
         const button = event.currentTarget
         button.disabled = true
         try {
-            activeProfile = await core.invoke('microsoft_sign_in')
-            byId('user_text').textContent = activeProfile.name
+            setActiveProfile(await core.invoke('microsoft_sign_in'))
             showSettingsAccount()
         } catch (error) {
             showError('Microsoft 로그인', error, button)
@@ -617,7 +675,7 @@ async function initializeHome() {
                 allowPrerelease: allowPrerelease.disabled ? null : allowPrerelease.checked
             })
             if (prereleaseChanged) void refreshUpdates?.()
-            showView('landingContainer')
+            await showView('landingContainer')
             settingsButton.focus()
         } catch (error) {
             showError('게임 설정을 저장하지 못했어요', error, settingsDone)
@@ -660,11 +718,11 @@ async function initializeHome() {
 
 loginButton.addEventListener('click', async () => {
     loginButton.disabled = true
-    showView('waitingContainer')
+    await showView('waitingContainer')
     try {
         await showAuthenticated(await core.invoke('microsoft_sign_in'))
     } catch (error) {
-        showView('loginOptionsContainer')
+        await showView('loginOptionsContainer')
         showError('Microsoft 로그인', error, loginButton)
     } finally {
         loginButton.disabled = false
@@ -674,8 +732,8 @@ loginButton.addEventListener('click', async () => {
 try {
     const profile = await core.invoke('account_profile')
     if (profile) await showAuthenticated(profile)
-    else showView('loginOptionsContainer')
+    else await showView('loginOptionsContainer')
 } catch (error) {
-    showView('loginOptionsContainer')
+    await showView('loginOptionsContainer')
     showError('저장된 계정을 확인하지 못했어요', error, loginButton)
 }

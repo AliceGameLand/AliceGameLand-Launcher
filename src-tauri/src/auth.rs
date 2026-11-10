@@ -34,6 +34,14 @@ struct ClientConfig {
 pub struct Profile {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub(crate) skins: Vec<ProfileSkin>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub(crate) struct ProfileSkin {
+    state: String,
+    url: String,
 }
 
 pub struct GameSession {
