@@ -76,14 +76,12 @@ export function createJavaSettings(document) {
         })
     }
 
-    const panel = byId('settingsTabJava')
     byId('settingsJavaExecSel').disabled = true
 
 
     return {
         load(server, snapshot) {
             activeServerId = server.id
-            panel.querySelector('.settingsSelServContent').textContent = server.name
             byId('settingsJavaReqDesc').textContent = 'Java 25'
             byId('settingsJavaExecDetails').textContent = snapshot.executable
                 ? 'Temurin Java 25'

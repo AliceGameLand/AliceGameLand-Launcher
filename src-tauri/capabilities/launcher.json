@@ -27,6 +27,7 @@
     "allow-select-shaderpack",
     "allow-microsoft-sign-out",
     "allow-account-profile",
+    "allow-account-avatar",
     "allow-microsoft-sign-in"
   ]
 }

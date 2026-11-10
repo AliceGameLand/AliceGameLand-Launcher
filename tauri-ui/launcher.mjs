@@ -21,6 +21,7 @@ const homeStatus = byId('homeServerStatus')
 let needsServerSelection
 let activeServer
 let activeProfile
+let avatarUrl
 let visibleView
 let viewFade
 let viewRevision = 0
@@ -29,7 +30,6 @@ let statusRequest = 0
 let selectedGameDirectory = null
 const javaSettings = createJavaSettings(document)
 const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
-const modsPanel = byId('settingsTabMods')
 const launcherSettings = byId('settingsTabLauncher')
 const gameDirectory = launcherSettings.querySelector('[cValue=DataDirectory]')
 const chooseGameDirectory = launcherSettings.querySelector('.settingsFileSelButton')
@@ -76,25 +76,47 @@ async function showView(id) {
     }
 }
 
+function openDialog(panel, restoreFocus, cancel) {
+    for (const candidate of overlay.querySelectorAll('[role="dialog"]')) {
+        candidate.style.display = candidate === panel ? 'block' : 'none'
+    }
+    const main = byId('main')
+    const frameActions = byId('frameHomeActions')
+    function dismiss() {
+        overlay.style.display = 'none'
+        main.inert = frameActions.inert = false
+        document.removeEventListener('keydown', onKey, true)
+        restoreFocus?.focus()
+    }
+    function onKey(event) {
+        if (event.key === 'Escape') {
+            event.preventDefault()
+            if (!cancel.disabled) dismiss()
+        } else if (event.key === 'Tab') {
+            const controls = [...panel.querySelectorAll('button:enabled, a[href], summary')].filter(control => control.getClientRects().length)
+            const index = controls.indexOf(document.activeElement)
+            if (index === -1 || (event.shiftKey ? index === 0 : index === controls.length - 1)) {
+                event.preventDefault()
+                const target = event.shiftKey ? controls.at(-1) : controls[0]
+                target?.focus()
+            }
+        }
+    }
+    cancel.onclick = dismiss
+    document.addEventListener('keydown', onKey, true)
+    main.inert = frameActions.inert = true
+    overlay.style.display = 'grid'
+    const focus = panel.querySelector('[aria-pressed="true"]') ?? cancel
+    focus.focus()
+    return dismiss
+}
+
 function showError(title, message, restoreFocus) {
     byId('overlayTitle').textContent = title
     byId('overlayDesc').textContent = typeof message === 'string' ? message : '잠시 후 다시 시도해 주세요.'
     acknowledge.textContent = '확인'
-    const main = byId('main')
-    function dismiss() {
-        overlay.style.display = 'none'
-        main.inert = false
-        document.removeEventListener('keydown', onKey)
-        restoreFocus?.focus()
-    }
-    function onKey(event) {
-        if (event.key === 'Escape') dismiss()
-    }
-    acknowledge.onclick = dismiss
-    document.addEventListener('keydown', onKey)
-    main.inert = true
-    overlay.style.display = 'grid'
-    acknowledge.focus()
+    byId('overlayDismiss').style.display = 'none'
+    openDialog(byId('overlayContent'), restoreFocus, acknowledge)
 }
 
 function setActiveServer(server) {
@@ -174,7 +196,7 @@ function modRow(name, enabled, state) {
     return row
 }
 
-function bindMods(settingsDone) {
+function bindMods() {
     const tab = settingsTabs.find(button => button.getAttribute('rSc') === 'settingsTabMods')
     const required = byId('settingsReqModsContent')
     const local = byId('settingsDropinModsContent')
@@ -245,7 +267,6 @@ function bindMods(settingsDone) {
     async function refresh() {
         if (!visible() || savingShader || changingMod) return
         const refreshId = ++request
-        modsPanel.querySelector('.settingsSelServContent').textContent = activeServer.name
         inventory.setAttribute('aria-busy', 'true')
         try {
             const mods = await core.invoke('mod_settings', { serverId: activeServer.id })
@@ -295,7 +316,6 @@ function bindMods(settingsDone) {
         event.preventDefault()
         void refresh()
     })
-    modsPanel.querySelector('.settingsSwitchServerButton').addEventListener('click', () => settingsDone.click())
     for (const [id, folder] of [['settingsDropinFileSystemButton', 'mods'], ['settingsShaderpackButton', 'shaderpacks']]) {
         const button = byId(id)
         button.addEventListener('click', async () => {
@@ -306,6 +326,7 @@ function bindMods(settingsDone) {
             }
         })
     }
+    return refresh
 }
 
 function bindProjectPage(link, page) {
@@ -453,25 +474,30 @@ function bindAbout(version) {
     })
 }
 
-function accountImage(profile, size) {
+function accountImage(size) {
     const image = document.createElement('img')
     image.alt = ''
     image.width = size
     image.height = size
     const fallback = 'assets/images/icons/profile.svg'
-    const uuid = profile.id.replaceAll('-', '')
-    const skin = profile.skins?.find(entry => entry.state === 'ACTIVE')
-    const texture = /^https?:\/\/textures\.minecraft\.net\/texture\/([a-f0-9]{32,64})$/i.exec(skin?.url)?.[1]
-    const id = texture ?? (/^[a-f0-9]{32}$/i.test(uuid) ? uuid : null)
-    image.src = id ? `https://mc-heads.net/head/${id}/${Math.max(32, size)}` : fallback
+    image.src = avatarUrl ?? fallback
     image.addEventListener('error', () => { image.src = fallback }, { once: true })
     return image
 }
 
 function setActiveProfile(profile) {
     activeProfile = profile
+    avatarUrl = null
     byId('user_text').textContent = profile?.name ?? ''
-    byId('avatarContainer').replaceChildren(...(profile ? [accountImage(profile, 22)] : []))
+    const avatar = byId('avatarContainer')
+    avatar.replaceChildren(...(profile ? [accountImage(22)] : []))
+    if (profile) void core.invoke('account_avatar').then(url => {
+        if (activeProfile !== profile) return
+        avatarUrl = url
+        avatar.querySelector('img').src = url
+        const settingsImage = byId('settingsCurrentMicrosoftAccounts').querySelector('.settingsAuthAccountImage')
+        if (settingsImage?.dataset.profileId === profile.id) settingsImage.src = url
+    }).catch(() => {})
 }
 
 function showSettingsAccount() {
@@ -480,8 +506,9 @@ function showSettingsAccount() {
     row.className = 'settingsAuthAccount'
     const portrait = document.createElement('div')
     portrait.className = 'settingsAuthAccountLeft'
-    const image = accountImage(activeProfile, 48)
+    const image = accountImage(48)
     image.className = 'settingsAuthAccountImage'
+    image.dataset.profileId = activeProfile.id
     portrait.append(image)
     const body = document.createElement('div')
     body.className = 'settingsAuthAccountRight'
@@ -533,7 +560,7 @@ function showSettingsAccount() {
     container.replaceChildren(row)
 }
 
-async function openSettings(id, source) {
+async function openSettings(id, source, refresh = false) {
     source.disabled = true
     try {
         const [saved, java] = await Promise.all([
@@ -541,6 +568,9 @@ async function openSettings(id, source) {
             core.invoke('java_settings', { serverId: activeServer.id })
         ])
         javaSettings.load(activeServer, java)
+        for (const row of document.querySelectorAll('.settingsSelServContent')) {
+            row.replaceChildren(...serverListing(activeServer).children)
+        }
         for (const [key, field] of Object.entries(gameFields)) {
             const value = saved.game[key] ?? gameDefaults[key]
             if (field.type === 'checkbox') field.checked = value
@@ -552,14 +582,72 @@ async function openSettings(id, source) {
         allowPrerelease.checked = allowPrerelease.hasAttribute('data-required') || allowPrerelease.defaultChecked
         showSettingsAccount()
         selectSettingsTab(id)
-        await showView('settingsContainer')
-        settingsTabs.find(tab => tab.getAttribute('rSc') === id)?.focus()
+        if (!refresh) {
+            await showView('settingsContainer')
+            settingsTabs.find(tab => tab.getAttribute('rSc') === id)?.focus()
+        }
     } catch (error) {
         showError('설정을 열지 못했어요', error, source)
     } finally {
         source.disabled = false
     }
 }
+function serverListing(server) {
+    const row = document.createElement('button')
+    row.type = 'button'
+    row.className = 'serverListing'
+    const icon = document.createElement('img')
+    icon.className = 'serverListingImg'
+    icon.alt = ''
+    icon.src = serverIcon.getServerIcon(server)
+    icon.addEventListener('error', () => { icon.src = 'assets/images/SealCircle.png' }, { once: true })
+    const details = document.createElement('span')
+    details.className = 'serverListingDetails'
+    for (const [tag, cls, value] of [
+        ['strong', 'serverListingName', server.name],
+        ['span', 'serverListingDescription', server.description || `Minecraft ${server.minecraftVersion}`],
+        ['span', 'serverListingInfo', server.mainServer ? `${server.version} · 메인 서버` : server.version]
+    ]) {
+        const text = document.createElement(tag)
+        text.className = cls
+        text.textContent = value ?? ''
+        details.append(text)
+    }
+    row.append(icon, details)
+    return row
+}
+
+function pickServer(servers, opener, select) {
+    const list = byId('serverSelectListScrollable')
+    const confirm = byId('serverSelectConfirm')
+    const cancel = byId('serverSelectCancel')
+    let selected = activeServer
+    list.replaceChildren(...servers.map(server => {
+        const row = serverListing(server)
+        row.setAttribute('aria-pressed', String(server.id === selected.id))
+        row.onclick = () => {
+            list.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed', 'false')
+            row.setAttribute('aria-pressed', 'true')
+            selected = server
+        }
+        return row
+    }))
+    const dismiss = openDialog(byId('serverSelectContent'), opener, cancel)
+    confirm.onclick = async () => {
+        confirm.disabled = cancel.disabled = true
+        try {
+            const refresh = selected.id !== activeServer.id ? await select(selected) : null
+            dismiss()
+            await refresh?.()
+        } catch (error) {
+            dismiss()
+            showError('서버 선택을 저장하지 못했어요', error, opener)
+        } finally {
+            confirm.disabled = cancel.disabled = false
+        }
+    }
+}
+
 function makeChoice(server, firstChoice = false) {
     const item = document.createElement('button')
     item.type = 'button'
@@ -630,7 +718,7 @@ async function initializeHome() {
             if (!tab.hasAttribute('selected')) selectSettingsTab(id, true)
         })
     }
-    bindMods(settingsDone)
+    const refreshMods = bindMods()
     const prerelease = snapshot.version.split('+')[0].includes('-')
     allowPrerelease.toggleAttribute('data-required', prerelease)
     allowPrerelease.disabled = !snapshot.updatesAvailable || prerelease
@@ -665,21 +753,23 @@ async function initializeHome() {
             button.disabled = false
         }
     })
-    byId('settingsTabJava').querySelector('.settingsSwitchServerButton').addEventListener('click', () => settingsDone.click())
-    settingsDone.addEventListener('click', async () => {
+    async function saveSettings() {
         const settings = Object.fromEntries(Object.entries(gameFields).map(([key, field]) => [
             key, field.type === 'checkbox' ? field.checked : field.valueAsNumber
         ]))
+        const prereleaseChanged = !allowPrerelease.disabled && allowPrerelease.checked !== allowPrerelease.defaultChecked
+        await core.invoke('save_game_settings', {
+            settings,
+            java: javaSettings.change(),
+            dataDirectory: selectedGameDirectory,
+            allowPrerelease: allowPrerelease.disabled ? null : allowPrerelease.checked
+        })
+        if (prereleaseChanged) void refreshUpdates?.()
+    }
+    settingsDone.addEventListener('click', async () => {
         settingsDone.disabled = true
         try {
-            const prereleaseChanged = !allowPrerelease.disabled && allowPrerelease.checked !== allowPrerelease.defaultChecked
-            await core.invoke('save_game_settings', {
-                settings,
-                java: javaSettings.change(),
-                dataDirectory: selectedGameDirectory,
-                allowPrerelease: allowPrerelease.disabled ? null : allowPrerelease.checked
-            })
-            if (prereleaseChanged) void refreshUpdates?.()
+            await saveSettings()
             await showView('landingContainer')
             settingsButton.focus()
         } catch (error) {
@@ -688,6 +778,20 @@ async function initializeHome() {
             settingsDone.disabled = false
         }
     })
+    for (const button of document.querySelectorAll('.settingsSwitchServerButton')) {
+        button.addEventListener('click', () => {
+            const tab = button.closest('.settingsTab').id
+            pickServer(snapshot.servers, button, async server => {
+                await saveSettings()
+                await core.invoke('select_server', { serverId: server.id })
+                setActiveServer(server)
+                return async () => {
+                    await openSettings(tab, button, true)
+                    await refreshMods()
+                }
+            })
+        })
+    }
     const openFolder = byId('openGameFolderButton')
     openFolder.disabled = false
     openFolder.addEventListener('click', async () => {

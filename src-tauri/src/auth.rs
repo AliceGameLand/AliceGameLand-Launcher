@@ -3,7 +3,10 @@ use std::{
     time::Duration,
 };
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine,
+};
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::json;
@@ -328,6 +331,60 @@ async fn save_account(account: SavedAccount) -> Result<Profile> {
 #[tauri::command]
 pub async fn account_profile() -> Result<Option<Profile>> {
     Ok(load_account().await?.map(|account| account.profile))
+}
+
+async fn fetch_avatar(id: &str) -> Result<String> {
+    if !(32..=64).contains(&id.len()) || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("스킨 식별자가 올바르지 않아요.".into());
+    }
+    let mut response = login_client()?
+        .get(format!("https://mc-heads.net/head/{id}/48"))
+        .timeout(Duration::from_secs(8))
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|_| "스킨 이미지를 받지 못했어요.")?;
+    let mut png = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| "스킨 이미지를 받지 못했어요.")?
+    {
+        if png.len() + chunk.len() > 64 * 1024 {
+            return Err("스킨 이미지가 너무 커요.".into());
+        }
+        png.extend_from_slice(&chunk);
+    }
+    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("스킨 이미지 형식이 올바르지 않아요.".into());
+    }
+    Ok(format!("data:image/png;base64,{}", STANDARD.encode(png)))
+}
+
+#[tauri::command]
+pub async fn account_avatar() -> Result<String> {
+    let profile = load_account()
+        .await?
+        .ok_or("로그인된 계정이 없어요.")?
+        .profile;
+    if let Some(texture) = profile
+        .skins
+        .iter()
+        .filter(|skin| skin.state == "ACTIVE")
+        .find_map(|skin| {
+            skin.url
+                .strip_prefix("https://textures.minecraft.net/texture/")
+                .or_else(|| {
+                    skin.url
+                        .strip_prefix("http://textures.minecraft.net/texture/")
+                })
+        })
+    {
+        if let Ok(avatar) = fetch_avatar(texture).await {
+            return Ok(avatar);
+        }
+    }
+    fetch_avatar(&profile.id.replace('-', "")).await
 }
 
 #[tauri::command]

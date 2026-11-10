@@ -24,6 +24,7 @@ fn main() {
             "select_shaderpack",
             "microsoft_sign_out",
             "account_profile",
+            "account_avatar",
             "microsoft_sign_in",
             "wizard_info",
             "wizard_folder",

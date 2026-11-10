@@ -24,6 +24,10 @@ pub struct Distribution {
 pub struct Server {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub version: String,
     pub minecraft_version: String,
     #[serde(default, skip_serializing)]
     pub address: String,

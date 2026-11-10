@@ -499,6 +499,7 @@ fn main() {
             select_shaderpack,
             auth::microsoft_sign_out,
             auth::account_profile,
+            auth::account_avatar,
             auth::microsoft_sign_in
         ])
         .build(context)
