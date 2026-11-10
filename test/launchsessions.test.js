@@ -56,10 +56,10 @@ function createHarness(){
     return { context, processes, resets, failures, presence, timers, ready: () => Array.from(timers.values()).at(-1).callback() }
 }
 
-test('The launching indicator stays visible for at least 6.5 seconds after spawning', async () => {
+test('The launching indicator stays visible for at least 7 seconds after spawning', async () => {
     const h = createHarness()
     await vm.runInContext('dlAsync("one",1)', h.context)
-    assert.deepEqual(Array.from(h.timers.values(), timer => timer.delay), [6500])
+    assert.deepEqual(Array.from(h.timers.values(), timer => timer.delay), [7000])
     assert.deepEqual(h.resets, [])
     h.ready()
     assert.deepEqual(h.resets, [false])
