@@ -12,7 +12,7 @@ const source = path.resolve(process.argv[2] ?? path.join(root, 'src-tauri', 'tar
 await mkdir(output, { recursive: true })
 const temporary = await mkdtemp(path.join(output, 'package-'))
 const stage = path.join(temporary, 'app')
-const launcher = path.join(stage, 'AliceGameLand-Tauri.exe')
+const launcher = path.join(stage, 'AliceGameLand.exe')
 const bootstrapper = path.join(temporary, 'MicrosoftEdgeWebView2Setup.exe')
 
 async function prepareWebView2() {
@@ -47,7 +47,7 @@ try {
             productName: '앨리스의 게임랜드',
             artifactName: 'alice-gameland-${version}-setup.exe',
             directories: { output, buildResources: path.join(root, 'build') },
-            win: { executableName: 'AliceGameLand-Tauri', icon: 'build/icon.ico', signAndEditExecutable: false },
+            win: { executableName: 'AliceGameLand', icon: 'build/icon.ico', signAndEditExecutable: false },
             nsis: {
                 include: 'build/tauri-wizard.nsh',
                 guid: '69bd89cc-35ff-5408-9b98-972ba4fb446c',

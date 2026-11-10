@@ -49,7 +49,7 @@ foreach ($mode in $Scope) {
 
     $files = @(Get-ChildItem -LiteralPath $root -File)
     $uninstaller = @($files | Where-Object Name -like 'Uninstall*.exe')
-    if ($files.Count -ne 2 -or $uninstaller.Count -ne 1 -or $files.Name -notcontains 'AliceGameLand-Tauri.exe') {
+    if ($files.Count -ne 2 -or $uninstaller.Count -ne 1 -or $files.Name -notcontains 'AliceGameLand.exe') {
         throw "$mode produced unexpected install files"
     }
     $registration = Find-Preview $hive
@@ -58,7 +58,7 @@ foreach ($mode in $Scope) {
     }
     $userFile = Join-Path $root 'user-settings.txt'
     Set-Content -LiteralPath $userFile -Value 'keep'
-    $installedLauncher = Join-Path $root 'AliceGameLand-Tauri.exe'
+    $installedLauncher = Join-Path $root 'AliceGameLand.exe'
     $expectedPayload = (Get-FileHash -LiteralPath $installedLauncher).Hash
     Set-Content -LiteralPath $installedLauncher -Value 'previous launcher fixture'
     Invoke-NsisWorker $installerPath "/S --updated /$mode /D=$root" $fixture

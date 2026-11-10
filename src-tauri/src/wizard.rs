@@ -42,8 +42,9 @@ use windows::{
 
 const FOLDER: &str = "alice-gameland-launcher";
 const PREVIEW_FOLDER: &str = "alice-gameland-tauri-preview";
-const LAUNCHER: &str = "AliceGameLand-Tauri.exe";
-const UNINSTALLER: &str = "Uninstall AliceGameLand-Tauri.exe";
+const LAUNCHER: &str = "AliceGameLand.exe";
+const OLD_LAUNCHER: &str = "AliceGameLand-Tauri.exe";
+const UNINSTALLER: &str = "Uninstall AliceGameLand.exe";
 const ELECTRON_KEY: PCWSTR = w!(r"Software\3d6e8bdf-a47b-5327-b17b-ac5678029a9c");
 const ELECTRON_EXE: &str = "앨리스의 게임랜드.exe";
 const ELECTRON_UNINSTALLER: &str = "Uninstall 앨리스의 게임랜드.exe";
@@ -201,9 +202,9 @@ fn registered_location(scope: Scope, key: PCWSTR) -> Option<PathBuf> {
 
 fn registered_update_target(mode: Scope) -> Option<UpdateTarget> {
     let destination = registered_directory(mode)?;
-    destination
-        .join(LAUNCHER)
-        .is_file()
+    [LAUNCHER, OLD_LAUNCHER]
+        .into_iter()
+        .any(|name| destination.join(name).is_file())
         .then_some(UpdateTarget { destination, mode })
 }
 
@@ -668,7 +669,11 @@ fn install(
         mode: Some(if machine { "all" } else { "user" }),
     });
     // NSIS reads everything after /D= as the path. It has to be last and unquoted.
-    let updated_flag = if updating { " --updated" } else { "" };
+    let updated_flag = if updating && target.join(LAUNCHER).is_file() {
+        " --updated"
+    } else {
+        ""
+    };
     let args = format!("/S{updated_flag} {} /D={}", mode.flag(), target.display());
     run_worker(backend, &args, machine)?;
     if !target.join(LAUNCHER).is_file() {
