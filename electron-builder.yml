@@ -13,7 +13,7 @@ publish:
   repo: AliceGameLand-Launcher
 
 files:
-  - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,.impeccable,PRODUCT.md,DESIGN.md,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
+  - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,.impeccable,PRODUCT.md,DESIGN.md,README.md,AGENTS.md,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
   - '!{installer,scripts,test,patches}/**'
 
 extraResources:
@@ -22,6 +22,7 @@ extraResources:
 # Windows Configuration
 win: 
   icon: 'build/icon.ico'
+  electronLanguages: ['ko', 'en-US', 'en-GB']
   target: 
     - target: 'nsis'
       arch: 'x64'
