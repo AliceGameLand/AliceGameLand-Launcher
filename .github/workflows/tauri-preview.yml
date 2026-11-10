@@ -187,7 +187,9 @@ jobs:
           fs.writeFileSync('package-lock.json', JSON.stringify(reference, null, 2) + '\n')
           NODE
             npm ci
-            CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist -- --mac dmg --arm64 --publish never
+            # The pinned builder uses NFD helper names but leaves CFBundleName in NFC by default.
+            bundle_name=$(node -e 'const fs = require("node:fs"); const yaml = require("js-yaml"); console.log(yaml.load(fs.readFileSync("electron-builder.yml", "utf8")).productName.normalize("NFD"))')
+            CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist -- --mac dmg --arm64 --publish never "-c.mac.extendInfo.CFBundleName=$bundle_name"
           )
           electron_dmg=$(find "$reference/source/dist" -maxdepth 1 -type f -name '*.dmg' -print -quit)
           tauri_dmg=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -type f -name '*.dmg' -print -quit)
@@ -214,6 +216,8 @@ jobs:
           }
           electron="$electron_app/Contents/MacOS/$(executable "$electron_app")"
           tauri="$tauri_app/Contents/MacOS/$(executable "$tauri_app")"
+          bundle_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$electron_app/Contents/Info.plist")
+          test -x "$electron_app/Contents/Frameworks/$bundle_name Helper.app/Contents/MacOS/$bundle_name Helper"
           test "$(lipo -archs "$electron")" = arm64
           test "$(lipo -archs "$tauri")" = arm64
           codesign --verify --deep --strict "$electron_app" || echo '::warning::Electron reference signature verification failed'
