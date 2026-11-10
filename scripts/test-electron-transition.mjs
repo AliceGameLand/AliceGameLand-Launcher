@@ -17,7 +17,7 @@ try {
     for (let attempt = 0; attempt < 120 && !socket; attempt++) {
         const pages = await fetch('http://127.0.0.1:' + port + '/json/list').then(response => response.json()).catch(() => [])
         const page = pages.find(item => item.url.endsWith('/wizard/setup.html'))
-        if (page) socket = new WebSocket(page.webSocketDebuggerUrl)
+        if (page) socket = new globalThis.WebSocket(page.webSocketDebuggerUrl)
         else await wait(250)
     }
     assert.ok(socket, 'Tauri setup opened')

@@ -100,6 +100,36 @@ jobs:
           $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
           ./scripts/test-tauri-setup.ps1 -Installer $setup.FullName
           node scripts/test-tauri-update.mjs $setup.FullName
+      - name: Verify Electron upgrades to Tauri in the same folder
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $fixture = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'electron transition')
+          gh release download v1.0.43 -R AliceGameLand/AliceGameLand-Launcher --pattern 'alice-gameland-setup-1.0.43.exe' --dir $fixture.FullName
+          if ($LASTEXITCODE) { throw 'Could not fetch Electron reference' }
+          $electron = Join-Path $fixture.FullName 'alice-gameland-setup-1.0.43.exe'
+          $target = Join-Path $fixture.FullName 'alice-gameland-launcher'
+          $original = Start-Process -FilePath $electron -ArgumentList "/S /currentuser /D=$target" -Wait -PassThru
+          if ($original.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $target 'Uninstall 앨리스의 게임랜드.exe'))) {
+            throw 'Electron reference did not install'
+          }
+          $data = New-Item -ItemType Directory -Force -Path (Join-Path $env:APPDATA '.alicegameland/instances')
+          $gameFile = Join-Path $data.FullName 'keep.txt'
+          Set-Content -LiteralPath $gameFile -Value 'game-fixture'
+          $config = New-Item -ItemType Directory -Force -Path (Join-Path $env:APPDATA '앨리스의 게임랜드')
+          $settings = Join-Path $config.FullName 'config.json'
+          Set-Content -LiteralPath $settings -Value '{}'
+          $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
+          node scripts/test-electron-transition.mjs $setup.FullName $target
+          if ($LASTEXITCODE) { throw 'Electron transition failed' }
+          if (!(Test-Path -LiteralPath (Join-Path $target 'AliceGameLand-Tauri.exe')) -or
+              (Test-Path -LiteralPath (Join-Path $target '앨리스의 게임랜드.exe')) -or
+              (Test-Path -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\3d6e8bdf-a47b-5327-b17b-ac5678029a9c') -or
+              (Get-Content -LiteralPath $gameFile) -ne 'game-fixture' -or
+              (Get-Content -LiteralPath $settings) -ne '{}') {
+            throw 'Migration did not preserve game and configuration or left Electron registered'
+          }
       - name: Compare Windows launcher startup and memory
         if: runner.os == 'Windows' && (inputs.benchmark || contains(github.event.head_commit.message, '[benchmark]'))
         env:
