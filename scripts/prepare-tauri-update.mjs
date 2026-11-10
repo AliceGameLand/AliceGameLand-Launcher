@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
@@ -51,6 +52,17 @@ try {
             signature: (await readFile(destination + '.sig', 'utf8')).trim()
         }
     }
+    // The previous Windows launcher reads this feed from the latest GitHub release.
+    const setup = packages[0].name
+    const installer = await readFile(path.join(staged, setup))
+    const sha512 = createHash('sha512').update(installer).digest('base64')
+    const electronFeed = {
+        version,
+        files: [{ url: setup, sha512, size: installer.length }],
+        path: setup,
+        sha512
+    }
+    await writeFile(path.join(staged, 'latest.yml'), require('js-yaml').dump(electronFeed))
     const notes = await readFile(path.join(root, 'docs', 'releases', version + '.md'), 'utf8').catch(error => {
         if (error.code !== 'ENOENT') throw error
         return ''
