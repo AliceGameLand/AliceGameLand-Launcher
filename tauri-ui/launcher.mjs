@@ -56,7 +56,7 @@ async function showView(id) {
     viewFade?.cancel()
     const animate = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (animate && visibleView && visibleView !== id) {
-        viewFade = byId(visibleView).animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' })
+        viewFade = byId(visibleView).animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease-in-out', fill: 'forwards' })
         await viewFade.finished.catch(() => {})
         if (revision !== viewRevision) return
         viewFade.cancel()
@@ -69,7 +69,7 @@ async function showView(id) {
     byId('frameHomeActions').hidden = id !== 'landingContainer'
     byId('loadingContainer').hidden = true
     document.body.classList.remove('launcher-starting')
-    if (animate) viewFade = byId(id).animate([{ opacity: 0 }, { opacity: 1 }], 200)
+    if (animate) viewFade = byId(id).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-in-out' })
     if (id === 'landingContainer') {
         homeList.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
         void refreshServerStatus()
@@ -140,7 +140,7 @@ async function showAuthenticated(profile) {
     if (needsServerSelection) setupList.firstElementChild?.focus()
 }
 
-function selectSettingsTab(id) {
+function selectSettingsTab(id, fade = false) {
     for (const tab of settingsTabs) {
         const active = tab.getAttribute('rSc') === id
         tab.toggleAttribute('selected', active)
@@ -148,6 +148,9 @@ function selectSettingsTab(id) {
     }
     for (const pane of document.querySelectorAll('.settingsTab')) {
         pane.style.display = pane.id === id ? '' : 'none'
+    }
+    if (fade && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        byId(id)?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: 'ease-in-out' })
     }
 }
 
@@ -623,7 +626,9 @@ async function initializeHome() {
     accountButton.addEventListener('click', () => openSettings('settingsTabAccount', accountButton))
     for (const tab of settingsTabs) {
         const id = tab.getAttribute('rSc')
-        tab.addEventListener('click', () => selectSettingsTab(id))
+        tab.addEventListener('click', () => {
+            if (!tab.hasAttribute('selected')) selectSettingsTab(id, true)
+        })
     }
     bindMods(settingsDone)
     const prerelease = snapshot.version.split('+')[0].includes('-')
