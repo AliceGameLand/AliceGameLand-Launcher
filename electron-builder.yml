@@ -14,12 +14,10 @@ publish:
 
 files:
   - '!{dist,runtime,.runtime-cache,.gitignore,.vscode,docs,.impeccable,PRODUCT.md,DESIGN.md,dev-app-update.yml,.nvmrc,eslint.config.mjs}'
-  - '!installer/uninstall/**'
+  - '!{installer,scripts,test,patches}/**'
 
 extraResources:
   - 'libraries'
-  - from: 'runtime/windows-x64'
-    to: 'runtime/windows-x64'
 
 # Windows Configuration
 win: 

@@ -15,7 +15,7 @@
 Windows x64용 설치파일은 [최신 릴리스](https://github.com/AliceGameLand/AliceGameLand-Launcher/releases/latest)에서 받을 수 있습니다.
 
 1. `alice-gameland-setup-버전.exe`를 내려받아 실행합니다.
-2. 설치 위치를 확인하고 런처를 설치합니다. 게임 실행에 필요한 Java도 함께 설치됩니다.
+2. 설치 위치를 확인하고 런처를 설치합니다. 호환되는 Java 25가 없으면 첫 플레이 때 자동으로 내려받습니다.
 3. 런처를 열고 Minecraft Java Edition을 보유한 Microsoft 계정으로 로그인합니다.
 4. 플레이할 서버를 선택한 뒤 **플레이**를 누릅니다.
 
@@ -81,7 +81,7 @@ npm run dist:setup
 | `index.js` | Electron 메인 프로세스, 창 및 업데이트 관리 |
 | `app/` | EJS 화면, 스타일, 로그인·설정·게임 실행 코드 |
 | `installer/` | Windows 설치 화면과 설치 처리 |
-| `scripts/` | Java 준비 및 설치파일 빌드 도구 |
+| `scripts/` | 설치파일 빌드 도구 |
 | `patches/` | 런처에서 사용하는 의존성 수정 사항 |
 | `test/` | 회귀 테스트 |
 

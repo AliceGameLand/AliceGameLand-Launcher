@@ -84,7 +84,7 @@ api.progress(value => {
         byId('step-check').classList.add('done')
         byId('step-check').removeAttribute('aria-current')
         byId('step-install').setAttribute('aria-current', 'step')
-        byId('progress-note').textContent = value.mode === 'all' ? 'Windows 권한 요청이 표시되면 승인해 주세요.' : '런처와 Java 파일을 준비하고 있습니다.'
+        byId('progress-note').textContent = value.mode === 'all' ? 'Windows 권한 요청이 표시되면 승인해 주세요.' : '런처 파일을 준비하고 있습니다.'
     }
 })
 byId('launch').onclick = async () => {

@@ -14,10 +14,9 @@
   "scripts": {
     "start": "electron .",
     "postinstall": "patch-package",
-    "runtime:prepare": "node scripts/prepare-bundled-java.mjs",
     "dist": "electron-builder build",
     "dist:setup": "node scripts/build-setup.mjs",
-    "dist:win": "npm run runtime:prepare && npm run dist -- -w",
+    "dist:win": "npm run dist:setup",
     "dist:mac": "npm run dist -- -m",
     "dist:linux": "npm run dist -- -l",
     "lint": "eslint ."

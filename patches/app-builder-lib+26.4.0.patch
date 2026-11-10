@@ -1,3 +1,16 @@
+diff --git a/node_modules/app-builder-lib/templates/nsis/installer.nsi b/node_modules/app-builder-lib/templates/nsis/installer.nsi
+--- a/node_modules/app-builder-lib/templates/nsis/installer.nsi
++++ b/node_modules/app-builder-lib/templates/nsis/installer.nsi
+@@ -107,7 +107,9 @@ Section "install" INSTALL_SECTION_ID
+                 ${Case} 0
+                   ${Break}
+                 ${Case} 1223 ;user aborted
++                  SetErrorLevel 1223
+                   ${Break}
+                 ${Default}
++                  SetErrorLevel $0
+                   MessageBox mb_IconStop|mb_TopMost|mb_SetForeground "Unable to elevate, error $0"
+                   ${Break}
 diff --git a/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh b/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
 --- a/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh
 +++ b/node_modules/app-builder-lib/templates/nsis/uninstaller.nsh

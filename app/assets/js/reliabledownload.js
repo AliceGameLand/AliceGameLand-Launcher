@@ -13,7 +13,7 @@ function directUrl(value){
 }
 
 // Stream into a temporary file; failed attempts cannot replace a valid game file.
-async function downloadFile(url, destination, onProgress){
+async function downloadFile(url, destination, onProgress, timeout = { request: 60000 }){
     const temporary = destination + '.alice-download'
     await fs.ensureDir(path.dirname(destination))
     let failure
@@ -22,7 +22,7 @@ async function downloadFile(url, destination, onProgress){
     for(const candidate of attempts){
         try {
             onProgress?.({ transferred: 0 })
-            const stream = got.stream(candidate, { timeout: { request: 60000 }, retry: { limit: 0 } })
+            const stream = got.stream(candidate, { timeout, retry: { limit: 0 } })
             if(onProgress) stream.on('downloadProgress', onProgress)
             await pipeline(stream, fs.createWriteStream(temporary))
             await fs.move(temporary, destination, { overwrite: true })

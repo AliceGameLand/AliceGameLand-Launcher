@@ -88,6 +88,7 @@ class ProcessBuilder {
 
         const child = child_process.spawn(ConfigManager.getJavaExecutable(this.server.rawServer.id), args, {
             cwd: this.gameDir,
+            windowsHide: true,
             detached: ConfigManager.getLaunchDetached()
         })
 

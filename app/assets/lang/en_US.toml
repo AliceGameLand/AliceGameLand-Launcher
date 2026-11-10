@@ -155,10 +155,6 @@ failureText = "The game could not start. Try again. If this keeps happening, cop
 play = "Play"
 additionalPlay = "Launch another"
 diagnosticCopied = "Copied"
-bundledJavaMissingTitle = "Bundled Java Not Found"
-bundledJavaMissingText = "The launcher installation is damaged. Reinstall the latest launcher version."
-bundledJavaInvalidTitle = "Bundled Java Error"
-bundledJavaInvalidText = "The bundled Java 25 runtime is damaged. Reinstall the latest launcher version."
 okay = "Okay"
 
 [js.landing.selectedAccount]
@@ -180,6 +176,7 @@ red = "Outage"
 grey = "Unknown"
 
 [js.landing.systemScan]
+checkingJava = "Checking for compatible Java…"
 checking = "Checking system info.."
 noCompatibleJava = "No Compatible<br>Java Installation Found"
 installJavaMessage = "In order to launch Minecraft, you need a 64-bit installation of Java {major}. Would you like us to install a copy?"
@@ -187,13 +184,16 @@ installJava = "Install Java"
 installJavaManually = "Install Manually"
 javaDownloadPrepare = "Preparing Java Download.."
 javaDownloadFailureTitle = "Error During Java Download"
-javaDownloadFailureText = "See console (CTRL + Shift + i) for more details."
+javaDownloadFailureText = "Could not prepare Java. Check your internet connection and disk space, then try again."
 javaRequired = "Java is Required<br>to Launch"
 javaRequiredMessage = 'A valid x64 installation of Java {major} is required to launch.<br><br>Please refer to our <a href="https://github.com/dscalzi/HeliosLauncher/wiki/Java-Management#manually-installing-a-valid-version-of-java">Java Management Guide</a> for instructions on how to manually install Java.'
 javaRequiredDismiss = "I Understand"
 javaRequiredCancel = "Go Back"
 
 [js.landing.downloadJava]
+download = "Downloading Java 25…"
+verify = "Verifying the Java download…"
+extract = "Extracting Java…"
 findJdkFailure = "Failed to find OpenJDK distribution."
 javaDownloadCorruptedError = "Downloaded JDK has a bad hash, the file may be corrupted."
 extractingJava = "Extracting Java"
@@ -272,9 +272,8 @@ shaderpackOff = "Off (default)"
 mainServer = "Main Server"
 
 [js.settings.java]
+automaticJava = "Compatible Java is checked when you play."
 selectedJava = "Selected: Java {version} ({vendor})"
-bundledJava = "Bundled Java {version} ({vendor})"
-bundledJavaMissing = "The bundled Java runtime could not be found."
 invalidSelection = "Invalid Selection"
 requiresJava = "Requires Java {major} x64."
 availableOptions = "Available Options for Java {major} (HotSpot VM)"

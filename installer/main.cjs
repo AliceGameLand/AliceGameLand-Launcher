@@ -3,7 +3,6 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { spawn, execFile } = require('node:child_process')
 const { promisify } = require('node:util')
-const { createHash } = require('node:crypto')
 const { validateDestination, installerArguments } = require('./paths.cjs')
 const { findUpdateTarget } = require('./update-target.cjs')
 
@@ -13,7 +12,9 @@ let installing = false
 let installedExecutable
 let updateTarget
 let updateError
-const manifest = require('./payload.json')
+const metadata = require('./package.json')
+const sourceIndex = process.argv.indexOf('--alice-installer')
+const installer = sourceIndex > 0 ? process.argv[sourceIndex + 1] : null
 const defaults = {
     user: path.join(process.env.LOCALAPPDATA, 'Programs', 'alice-gameland-launcher'),
     all: path.join(process.env.ProgramFiles, 'alice-gameland-launcher')
@@ -53,7 +54,7 @@ app.on('window-all-closed', () => app.quit())
 
 ipcMain.handle('setup:info', event => {
     trusted(event)
-    return { version: manifest.version, defaults, updateTarget, updateError }
+    return { version: metadata.version, defaults, updateTarget, updateError }
 })
 ipcMain.handle('setup:folder', async (event, current) => {
     trusted(event)
@@ -84,26 +85,19 @@ ipcMain.handle('setup:install', async (event, options) => {
         const processes = await execute('tasklist.exe', ['/FI', 'IMAGENAME eq 앨리스의 게임랜드.exe', '/FO', 'CSV', '/NH'], { windowsHide: true })
         // CSV process rows are recognizable even when tasklist uses the system code page.
         if(/^"[^\r\n]+","\d+",/m.test(processes.stdout)) throw new Error('실행 중인 런처를 닫은 뒤 다시 시도해 주세요. 게임 창은 닫지 않아도 됩니다.')
-        const payload = path.join(process.resourcesPath, 'payload', 'launcher.exe')
-        const digest = createHash('sha256')
-        let received = 0
-        const total = fs.statSync(payload).size
-        let lastPercent = -1
-        for await (const bytes of fs.createReadStream(payload)){
-            digest.update(bytes)
-            received += bytes.length
-            const percent = Math.round(received / total * 100)
-            if(percent !== lastPercent){ report('checking', { percent }); lastPercent = percent }
+        // NSIS checks its embedded archive before opening this wizard and again before installing.
+        if(!installer || !path.isAbsolute(installer) || path.extname(installer).toLowerCase() !== '.exe' || !fs.statSync(installer, { throwIfNoEntry: false })?.isFile()) {
+            throw new Error('설치파일을 확인하지 못했습니다. 설치파일을 다시 받아 주세요.')
         }
-        if(digest.digest('hex') !== manifest.sha256) throw new Error('설치파일을 확인하지 못했습니다. 설치파일을 다시 받아 주세요.')
+        report('checking', { percent: 100 })
         report('installing', { destination, mode })
         await new Promise((resolve, reject) => {
             // NSIS requires /D to be last and unquoted, including paths with spaces.
-            const child = spawn(payload, installerArguments(destination, mode, Boolean(updateTarget)), { windowsHide: true, windowsVerbatimArguments: true, stdio: 'ignore' })
+            const child = spawn(installer, installerArguments(destination, mode, Boolean(updateTarget)), { windowsHide: true, windowsVerbatimArguments: true, stdio: 'ignore' })
             child.once('error', reject)
             child.once('close', code => code === 0 ? resolve() : reject(new Error(code === 1223 ? '설치 권한 요청이 취소되었습니다. 다시 시도할 수 있습니다.' : '설치를 완료하지 못했습니다. 설치 위치와 권한을 확인한 뒤 다시 시도해 주세요.')))
         })
-        installedExecutable = path.join(destination, manifest.executable)
+        installedExecutable = path.join(destination, metadata.launcherExecutable)
         if(!fs.existsSync(installedExecutable)) throw new Error('설치된 런처를 찾지 못했습니다. 설치 위치를 확인한 뒤 다시 시도해 주세요.')
         report('complete', { destination })
         return { ok: true, destination }

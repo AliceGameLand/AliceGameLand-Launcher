@@ -25,12 +25,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Prepare bundled Temurin JDK 25
-        run: npm run runtime:prepare
-
-      - name: Validate bundled Java
-        run: .\runtime\windows-x64\bin\java.exe -version
-
       - name: Test
         run: node --test test/*.test.js
 

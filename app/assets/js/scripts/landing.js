@@ -4,7 +4,6 @@
 const { MojangRestAPI, getServerStatus } = require('helios-core/mojang')
 const { RestResponseStatus, isDisplayableError } = require('helios-core/common')
 const { FullRepair, DistributionIndexProcessor, MojangIndexProcessor } = require('helios-core/dl')
-const { validateSelectedJvm, ensureJavaDirIsRoot } = require('helios-core/java')
 const { ensureDir } = require('fs-extra')
 
 const DiscordWrapper    = require('./assets/js/discordwrapper')
@@ -98,22 +97,25 @@ launchButton.addEventListener('click', async () => {
             showLaunchFailure(Lang.queryJS('landing.launch.failureTitle'), Lang.queryJS('landing.launch.serverUnavailable'))
             return
         }
-        const jExe = BundledJava.getExecutable()
-        if(jExe == null){
-            loggerLanding.error('Bundled Java executable is missing.', BundledJava.getRuntimeRoot())
+        let jExe
+        try {
+            setLaunchDetails(Lang.queryJS('landing.systemScan.checkingJava'))
+            jExe = await JavaRuntime.prepare({
+                dataDirectory: ConfigManager.getDataDirectory(),
+                executable: ConfigManager.getJavaExecutable(serverId),
+                supported: server.effectiveJavaOptions.supported,
+                suggestedMajor: server.effectiveJavaOptions.suggestedMajor
+            }, (phase, percent) => {
+                setLaunchDetails(Lang.queryJS('landing.downloadJava.' + phase))
+                if(phase === 'download') setDownloadPercentage(percent)
+                else setLaunchIndeterminate()
+            })
+        } catch(error) {
+            loggerLanding.error('Java preparation failed.', error)
             showLaunchFailure(
-                Lang.queryJS('landing.launch.bundledJavaMissingTitle'),
-                Lang.queryJS('landing.launch.bundledJavaMissingText')
-            )
-            return
-        }
-
-        const details = await validateSelectedJvm(ensureJavaDirIsRoot(jExe), server.effectiveJavaOptions.supported)
-        if(details == null){
-            loggerLanding.error('Bundled Java validation failed.', jExe)
-            showLaunchFailure(
-                Lang.queryJS('landing.launch.bundledJavaInvalidTitle'),
-                Lang.queryJS('landing.launch.bundledJavaInvalidText')
+                Lang.queryJS('landing.systemScan.javaDownloadFailureTitle'),
+                Lang.queryJS('landing.systemScan.javaDownloadFailureText'),
+                error
             )
             return
         }

@@ -11,7 +11,7 @@ const remote                         = require('@electron/remote')
 const isDev                          = require('./assets/js/isdev')
 const { LoggerUtil }                 = require('helios-core')
 const Lang                           = require('./assets/js/langloader')
-const BundledJava                    = require('./assets/js/bundledjava')
+const JavaRuntime                    = require('./assets/js/javaruntime')
 
 const loggerUICore             = LoggerUtil.getLogger('UICore')
 const loggerAutoUpdater        = LoggerUtil.getLogger('AutoUpdater')

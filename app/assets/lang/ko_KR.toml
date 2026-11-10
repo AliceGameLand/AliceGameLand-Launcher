@@ -155,10 +155,6 @@ failureText = "게임을 시작하지 못했습니다. 다시 시도해 주세�
 play = "플레이"
 additionalPlay = "추가 실행"
 diagnosticCopied = "복사했습니다"
-bundledJavaMissingTitle = "내장 Java를 찾을 수 없음"
-bundledJavaMissingText = "런처 파일이 손상되었습니다. 최신 설치파일로 런처를 다시 설치해 주세요."
-bundledJavaInvalidTitle = "내장 Java 실행 오류"
-bundledJavaInvalidText = "내장 Java 25가 손상되었습니다. 최신 설치파일로 런처를 다시 설치해 주세요."
 okay = "확인"
 
 [js.landing.selectedAccount]
@@ -180,6 +176,7 @@ red = "장애"
 grey = "확인 불가"
 
 [js.landing.systemScan]
+checkingJava = "호환되는 Java 확인 중…"
 checking = "시스템 정보 확인 중.."
 noCompatibleJava = "호환되는 Java가<br>설치되지 않음"
 installJavaMessage = "마인크래프트 실행을 위해 64비트 Java {major} 설치가 필요합니다. Java를 설치할까요?"
@@ -187,13 +184,16 @@ installJava = "Java 설치"
 installJavaManually = "수동 설치"
 javaDownloadPrepare = "Java 다운로드 준비 중.."
 javaDownloadFailureTitle = "Java 다운로드 중 오류 발생"
-javaDownloadFailureText = "콘솔 (CTRL + Shift + i) 에서 자세한 내용을 확인하세요."
+javaDownloadFailureText = "Java를 준비하지 못했습니다. 인터넷 연결과 저장 공간을 확인한 뒤 다시 시도해 주세요."
 javaRequired = "실행을 위해<br>Java가 필요합니다"
 javaRequiredMessage = "실행을 위해 유효한 64비트 Java {major} 를 설치해야 합니다.<br><br><a href=\"https://github.com/dscalzi/HeliosLauncher/wiki/Java-Management#manually-installing-a-valid-version-of-java\">Java Management Guide</a>를 참조하여 Java 수동 설치 방법을 확인하세요."
 javaRequiredDismiss = "확인"
 javaRequiredCancel = "돌아가기"
 
 [js.landing.downloadJava]
+download = "Java 25 다운로드 중…"
+verify = "Java 다운로드 파일 확인 중…"
+extract = "Java 압축 해제 중…"
 findJdkFailure = "OpenJDK를 찾을 수 없습니다."
 javaDownloadCorruptedError = "다운로드한 JDK가 손상되었습니다."
 extractingJava = "Java 압축 해제 중.."
@@ -272,9 +272,8 @@ shaderpackOff = "끄기 (기본값)"
 mainServer = "메인 서버"
 
 [js.settings.java]
+automaticJava = "플레이할 때 호환되는 Java를 확인합니다."
 selectedJava = "선택: Java {version} ({vendor})"
-bundledJava = "런처 내장 Java {version} ({vendor})"
-bundledJavaMissing = "런처 내장 Java를 찾을 수 없습니다."
 invalidSelection = "유효하지 않은 선택"
 requiresJava = "64비트 Java {major}가 필요합니다."
 availableOptions = "Java {major} (HotSpot VM)의 사용 가능한 JVM 인수"
