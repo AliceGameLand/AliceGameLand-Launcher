@@ -44,6 +44,9 @@ const FOLDER: &str = "alice-gameland-launcher";
 const PREVIEW_FOLDER: &str = "alice-gameland-tauri-preview";
 const LAUNCHER: &str = "AliceGameLand-Tauri.exe";
 const UNINSTALLER: &str = "Uninstall AliceGameLand-Tauri.exe";
+const ELECTRON_KEY: PCWSTR = w!(r"Software\3d6e8bdf-a47b-5327-b17b-ac5678029a9c");
+const ELECTRON_EXE: &str = "앨리스의 게임랜드.exe";
+const ELECTRON_UNINSTALLER: &str = "Uninstall 앨리스의 게임랜드.exe";
 const INSTALL_KEY: PCWSTR = w!(r"Software\69bd89cc-35ff-5408-9b98-972ba4fb446c");
 const INVALID_PATH: &str = "설치할 폴더를 다시 선택해 주세요.";
 const RUNNING: &str = "실행 중인 런처를 닫은 뒤 다시 시도해 주세요.";
@@ -168,6 +171,10 @@ struct UpdateTarget {
 }
 
 fn registered_directory(scope: Scope) -> Option<PathBuf> {
+    registered_location(scope, INSTALL_KEY)
+}
+
+fn registered_location(scope: Scope, key: PCWSTR) -> Option<PathBuf> {
     let hive = match scope {
         Scope::User => HKEY_CURRENT_USER,
         Scope::All => HKEY_LOCAL_MACHINE,
@@ -177,7 +184,7 @@ fn registered_directory(scope: Scope) -> Option<PathBuf> {
     let status = unsafe {
         RegGetValueW(
             hive,
-            INSTALL_KEY,
+            key,
             w!("InstallLocation"),
             RRF_RT_REG_SZ | RRF_SUBKEY_WOW6464KEY,
             None,
@@ -205,7 +212,15 @@ fn update_target(scope: Option<Scope>) -> Option<UpdateTarget> {
         Some(scope) => registered_update_target(scope),
         None => [Scope::User, Scope::All]
             .into_iter()
-            .find_map(registered_update_target),
+            .find_map(registered_update_target)
+            .or_else(|| {
+                [Scope::User, Scope::All].into_iter().find_map(|mode| {
+                    let destination = registered_location(mode, ELECTRON_KEY)?;
+                    (destination.join(ELECTRON_EXE).is_file()
+                        && destination.join(ELECTRON_UNINSTALLER).is_file())
+                    .then_some(UpdateTarget { destination, mode })
+                })
+            }),
     }
     .map(|mut target| {
         if target
@@ -507,6 +522,55 @@ impl Outcome {
     }
 }
 
+fn remove_electron(target: &Path, scope: Scope) -> Result<(), String> {
+    let data_root = env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .ok_or(INVALID_PATH)?;
+    let preferences = crate::preferences::Preferences::load(
+        &data_root
+            .join("kr.dreamcraft.alicegameland.launcher")
+            .join("preferences.json"),
+        &data_root,
+    )
+    .map_err(|_| "기존 게임 데이터 위치를 확인하지 못했어요.")?;
+    let root = target.canonicalize().map_err(|_| INVALID_PATH)?;
+    let contains_data = preferences.game_data_dir().is_some_and(|data| {
+        data.starts_with(target)
+            || data
+                .canonicalize()
+                .is_ok_and(|path| path.starts_with(&root))
+    }) || ["instances", "common", "config.json"]
+        .iter()
+        .any(|name| target.join(name).exists());
+    if contains_data {
+        return Err("런처 설치 폴더에 게임 파일이나 설정이 있어요. 게임 데이터 폴더를 옮긴 뒤 다시 시도해 주세요.".into());
+    }
+    let worker = target.join(ELECTRON_UNINSTALLER);
+    let args = format!(
+        r#"/S {} --updated --alice-wizard-root="{}""#,
+        scope.flag(),
+        target.display()
+    );
+    if scope == Scope::All {
+        run_worker(&worker, &args, true)?;
+    } else {
+        let temporary = tempfile::tempdir().map_err(|_| INVALID_PATH)?;
+        let copied = temporary.path().join(ELECTRON_UNINSTALLER);
+        fs::copy(&worker, &copied).map_err(|_| "기존 런처 제거 파일을 준비하지 못했어요.")?;
+        run_worker(&copied, &format!("{args} _?={}", target.display()), false)?;
+    }
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while target.join(ELECTRON_EXE).exists()
+        || registered_location(scope, ELECTRON_KEY).as_deref() == Some(target)
+    {
+        if Instant::now() >= deadline {
+            return Err("기존 런처 제거가 끝나지 않았어요. 런처를 닫고 다시 시도해 주세요.".into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Ok(())
+}
+
 fn install(
     backend: &Path,
     options: Options,
@@ -525,6 +589,13 @@ fn install(
     } else {
         (destination(&options.destination)?, options.mode)
     };
+    if !updating
+        && registered_location(mode, ELECTRON_KEY).as_ref() == Some(&target)
+        && target.join(ELECTRON_EXE).is_file()
+        && target.join(ELECTRON_UNINSTALLER).is_file()
+    {
+        remove_electron(&target, mode)?;
+    }
     if !updating {
         match fs::read_dir(&target) {
             Ok(mut entries) => {

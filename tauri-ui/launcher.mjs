@@ -419,6 +419,7 @@ function bindUpdates({ version, updatesAvailable }) {
         if (!release) return check()
         busy = true
         button.disabled = true
+        bar.parentElement.style.setProperty('--download-fraction', '0')
         bar.removeAttribute('value')
         label.textContent = '업데이트 받는 중…'
         percentage.textContent = '—'
@@ -429,6 +430,7 @@ function bindUpdates({ version, updatesAvailable }) {
             if (total > 0) {
                 bar.max = total
                 bar.value = received
+                bar.parentElement.style.setProperty('--download-fraction', Math.min(1, received / total))
                 percentage.textContent = Math.min(100, Math.floor(received / total * 100)) + '%'
                 size.textContent = mib(received) + ' / ' + mib(total)
                 if (received >= total) label.textContent = '서명 확인 및 설치 준비 중…'
