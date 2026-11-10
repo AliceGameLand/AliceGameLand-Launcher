@@ -4,8 +4,8 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 
 const [windows, mac] = process.argv.slice(2)
-if (!windows || !mac) {
-    throw new Error('Pass the Windows setup EXE and the macOS .app.tar.gz')
+if (!windows) {
+    throw new Error('Pass the Windows setup EXE and optionally the macOS .app.tar.gz')
 }
 if (!process.env.TAURI_SIGNING_PRIVATE_KEY && !process.env.TAURI_SIGNING_PRIVATE_KEY_PATH) {
     throw new Error('Set TAURI_SIGNING_PRIVATE_KEY or TAURI_SIGNING_PRIVATE_KEY_PATH')
@@ -19,7 +19,7 @@ const cli = path.join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js')
 const packages = [
     { target: 'windows-x86_64', file: windows, magic: [0x4d, 0x5a], name: `alice-gameland-tauri-${version}-win-x64-setup.exe` },
     { target: 'darwin-aarch64', file: mac, magic: [0x1f, 0x8b], name: `alice-gameland-tauri-${version}-mac-arm64.app.tar.gz` }
-]
+].filter(entry => entry.file)
 for (const entry of packages) {
     const file = await open(entry.file, 'r')
     try {

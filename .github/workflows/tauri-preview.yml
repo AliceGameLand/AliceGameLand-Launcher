@@ -36,6 +36,8 @@ jobs:
           - runner: macos-15
             platform: macos-arm64
     runs-on: ${{ matrix.runner }}
+    env:
+      ALICE_TAURI_UPDATE_PUBLIC_KEY: ${{ vars.ALICE_TAURI_UPDATE_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6

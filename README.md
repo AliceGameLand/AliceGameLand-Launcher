@@ -74,7 +74,7 @@ npm run dist:setup
 
 `dist/custom-setup/`에 사용자용 설치파일, `.blockmap`, `latest.yml`이 생성됩니다. 설치 화면은 Electron으로 구현했으며, 실제 설치는 내부 NSIS 엔진으로 처리합니다. 이 명령은 릴리스를 게시하지 않습니다.
 
-### Tauri 미리보기 업데이트 준비
+### Tauri 업데이트 준비
 
 Windows x64에서는 `npm run tauri -- build --no-bundle` 후 `node scripts/build-tauri-setup.mjs`를 실행합니다. Apple Silicon에서는 `npm run tauri -- build --bundles app,dmg`로 DMG와 앱 번들을 만들고 `src-tauri/target/release/bundle/macos`의 앱 번들을 `.app.tar.gz`로 압축합니다.
 
@@ -84,7 +84,7 @@ Windows x64에서는 `npm run tauri -- build --no-bundle` 후 `node scripts/buil
 node scripts/prepare-tauri-update.mjs WINDOWS_SETUP_EXE MACOS_APP_TAR_GZ
 ```
 
-`dist/tauri-update/`에 버전 서명이 적용된 패키지와 `tauri-update.json`이 생성됩니다. 패키지는 메타데이터가 가리키는 버전 태그에 올립니다. 안정 버전은 해당 릴리스의 메타데이터를, 프리릴리스는 `tauri-preview-feed` 태그의 메타데이터를 확인합니다.
+`dist/tauri-update/`에 버전 서명이 적용된 패키지와 `tauri-update.json`이 생성됩니다. 패키지는 메타데이터가 가리키는 버전 태그에 올립니다. Windows 패키지만 배포할 때는 macOS 경로를 생략합니다. 안정 버전은 `tauri-stable-feed` 태그의 메타데이터를, 프리릴리스는 `tauri-preview-feed` 태그의 메타데이터를 확인합니다.
 
 ### 주요 구조
 
