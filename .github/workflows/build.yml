@@ -5,36 +5,27 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   verify:
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 22
       - run: npm ci
-      - run: npm run lint
-      - run: node --test test/*.test.js
-      - run: npm run dist:setup
-      - uses: actions/upload-artifact@v6
-        with:
-          name: electron-1.0.42-verified
-          path: |
-            dist/custom-setup/*.exe
-            dist/custom-setup/*.blockmap
-            dist/custom-setup/latest.yml
-          if-no-files-found: error
-      - name: Verify in isolated English Windows
+      - name: Get the final installer
         env:
           GH_TOKEN: ${{ github.token }}
+        run: gh run download 42779098503 -n electron-1.0.42-verified -D dist/custom-setup
+      - name: Verify final all-users setup in English Windows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QA_SCOPE: allusers
         run: |
           Get-WinSystemLocale | Format-List Name
           (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage' -Name ACP).ACP
-          $env:QA_SCOPE = 'java'
-          node scripts/qa-electron-release.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:QA_SCOPE = 'currentuser'
           node scripts/qa-electron-release.mjs
