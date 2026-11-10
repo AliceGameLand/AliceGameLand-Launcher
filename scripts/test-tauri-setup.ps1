@@ -89,22 +89,30 @@ foreach ($mode in $Scope) {
         Remove-Item -LiteralPath $userFile
     }
 
-    $worker = $null
-    if ($mode -eq 'allusers') {
-        # The installed NSIS executable starts a temporary copy and returns.
-        $engine = $uninstaller[0].FullName
-        Invoke-NsisWorker $engine ('/S /allusers --alice-wizard-root="{0}"' -f $root) $fixture
+    $env:ALICE_TAURI_TEST_PROFILE = $fixture
+    $env:ALICE_TAURI_VERIFY_LOGIN = '1'
+    $env:ALICE_TAURI_VERIFY_REMOVE_WIZARD = 'remove'
+    $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $fixture 'launcher-webview'
+    $launcher = $null
+    try {
+        $launcher = Start-Process -FilePath $installedLauncher -WorkingDirectory $fixture -WindowStyle Hidden -PassThru
         $wait = [Diagnostics.Stopwatch]::StartNew()
-        while ((Test-Path -LiteralPath $engine) -or (Find-Preview $hive)) {
-            if ($wait.Elapsed.TotalSeconds -ge 15) {
-                throw 'The machine uninstaller did not finish after its starter exited'
+        while (!(Test-Path -LiteralPath (Join-Path $fixture 'login-ready'))) {
+            if ($launcher.HasExited -or $wait.Elapsed.TotalSeconds -ge 40) {
+                throw "$mode installed launcher did not start"
             }
             Start-Sleep -Milliseconds 100
         }
-    } else {
-        $worker = Join-Path $fixture 'remove-worker.exe'
-        Copy-Item -LiteralPath $uninstaller[0].FullName -Destination $worker
-        Invoke-NsisWorker $worker ('/S /currentuser --alice-wizard-root="{0}" _?={0}' -f $root) $fixture
+        if ($launcher.HasExited) { throw "$mode launcher was not running before uninstall" }
+        Invoke-NsisWorker $uninstaller[0].FullName "/$mode" $fixture
+        if (!$launcher.WaitForExit(5000)) { throw "$mode uninstall did not stop the launcher" }
+        if (!(Test-Path -LiteralPath $ready)) { throw "$mode removal window was not loaded" }
+    } finally {
+        if ($launcher) {
+            if (!$launcher.HasExited) { Stop-Process -Id $launcher.Id }
+            $launcher.Dispose()
+        }
+        Remove-Item Env:ALICE_TAURI_TEST_PROFILE, Env:ALICE_TAURI_VERIFY_LOGIN, Env:ALICE_TAURI_VERIFY_REMOVE_WIZARD, Env:WEBVIEW2_USER_DATA_FOLDER
     }
     if (Find-Preview $hive) {
         throw "$mode left an uninstall registration"
@@ -118,7 +126,6 @@ foreach ($mode in $Scope) {
     } elseif (Test-Path -LiteralPath $root) {
         throw 'Removal left an empty installation folder'
     }
-    if ($worker) { Remove-Item -LiteralPath $worker }
     Remove-Item -LiteralPath $fixture
     Write-Output "$mode installation and removal passed ($hive)"
 }

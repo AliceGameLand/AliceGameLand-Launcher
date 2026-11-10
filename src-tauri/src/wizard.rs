@@ -226,7 +226,7 @@ struct Info {
     version: String,
     defaults: Option<Defaults>,
     update_target: Option<UpdateTarget>,
-    verify_removal_window: bool,
+    verify_removal_window: Option<String>,
 }
 
 #[tauri::command]
@@ -243,12 +243,12 @@ fn wizard_info(app: tauri::AppHandle, state: State<'_, Wizard>) -> Result<Info, 
     };
     let verify_removal_window = matches!(state.mode, Mode::Remove { .. })
         && env::var_os("ALICE_TAURI_VERIFY_REMOVE_WIZARD").is_some();
-    let mut verified = false;
+    let mut verified = None;
     if verify_removal_window {
         if let Some(profile) = crate::test_profile().map_err(|error| error.to_string())? {
             fs::write(profile.join("remove-wizard-ready"), b"ready\n")
                 .map_err(|error| error.to_string())?;
-            verified = true;
+            verified = env::var("ALICE_TAURI_VERIFY_REMOVE_WIZARD").ok();
         }
     }
     Ok(Info {
@@ -575,6 +575,47 @@ async fn wizard_install(
     Ok(Outcome::from_result(result))
 }
 
+fn stop_installed_launcher(root: &Path) -> Result<(), String> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+    let error = "실행 중인 런처를 종료하지 못했어요. 런처를 닫은 뒤 다시 시도해 주세요.";
+    let launcher = root.join(LAUNCHER);
+    let target = match fs::canonicalize(&launcher) {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(_) => return Err(error.into()),
+    };
+    let mut system = System::new().map_err(|_| error)?;
+    let refresh = ProcessRefreshKind::nothing().with_exe(UpdateKind::Always);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        system.refresh_processes_specifics(ProcessesToUpdate::All, true, refresh);
+        let mut running = false;
+        for process in system.processes().values() {
+            if process
+                .exe()
+                .filter(|path| {
+                    path.file_name()
+                        .is_some_and(|name| name.eq_ignore_ascii_case(LAUNCHER))
+                })
+                .and_then(|path| fs::canonicalize(path).ok())
+                .as_ref()
+                == Some(&target)
+            {
+                running = true;
+                process.kill();
+            }
+        }
+        if !running {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(error.into());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 #[tauri::command]
 async fn wizard_remove(state: State<'_, Wizard>) -> Result<Outcome, String> {
     let Mode::Remove {
@@ -606,6 +647,7 @@ async fn wizard_remove(state: State<'_, Wizard>) -> Result<Outcome, String> {
         } else {
             args.push_str(&format!(" _?={}", root.display()));
         }
+        stop_installed_launcher(&root)?;
         run_worker(&backend, &args, machine)?;
 
         let deadline = Instant::now() + Duration::from_secs(15);

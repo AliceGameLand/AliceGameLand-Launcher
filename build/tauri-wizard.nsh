@@ -87,11 +87,25 @@
 !endif
 
 !macro customCheckAppRunning
-  ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
-  ${If} $R0 == 0
-    SetErrorLevel 2
-    Quit
-  ${EndIf}
+  !ifdef BUILD_UNINSTALLER
+    # The removal wizard already stops the launcher at the registered path.
+    ${GetParameters} $R0
+    ClearErrors
+    ${GetOptions} $R0 "--alice-wizard-root=" $R1
+    ${If} ${Errors}
+      ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+      ${If} $R0 == 0
+        SetErrorLevel 2
+        Quit
+      ${EndIf}
+    ${EndIf}
+  !else
+    ${nsProcess::FindProcess} "${APP_EXECUTABLE_FILENAME}" $R0
+    ${If} $R0 == 0
+      SetErrorLevel 2
+      Quit
+    ${EndIf}
+  !endif
 !macroend
 
 !macro preUnInit
