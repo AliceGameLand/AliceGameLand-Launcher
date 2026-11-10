@@ -8,7 +8,7 @@ import { createJavaSettings } from './java-settings.mjs'
 const byId = id => document.getElementById(id)
 const { core, window: windowApi } = window.__TAURI__
 const frame = windowApi.getCurrentWindow()
-const startupLoading = new Promise(resolve => window.setTimeout(resolve, 2000))
+const startupLoading = new Promise(resolve => window.setTimeout(resolve, 2500))
 uiClick.bindUiClickSound(document, window)
 const transitionArtwork = artworkTransition.createArtworkTransition(document.querySelector('.home-art'))
 const loginButton = byId('loginOptionMicrosoft')
@@ -82,9 +82,20 @@ async function showView(id) {
         byId(view).style.display = view === id ? 'grid' : 'none'
     }
     byId('frameHomeActions').hidden = id !== 'landingContainer'
-    byId('loadingContainer').hidden = true
+    const loading = byId('loadingContainer')
+    const leavingStartup = !loading.hidden
     document.body.classList.remove('launcher-starting')
-    if (animate) viewFade = byId(id).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-in-out' })
+    if (animate && leavingStartup) {
+        const exit = loading.animate([{ opacity: 1 }, { opacity: 0 }], {
+            duration: 220, easing: 'ease-out', fill: 'forwards'
+        })
+        await exit.finished.catch(() => {})
+        loading.hidden = true
+        exit.cancel()
+    } else if (animate) {
+        viewFade = byId(id).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-in-out' })
+    }
+    loading.hidden = true
     if (id === 'landingContainer') {
         homeList.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
         void refreshServerStatus()
