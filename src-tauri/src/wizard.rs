@@ -579,7 +579,13 @@ fn remove_electron(target: &Path, scope: Scope) -> Result<(), String> {
     Ok(())
 }
 
-fn clear_legacy_updater_cache() {
+pub(crate) fn clear_legacy_updater_cache() {
+    if [Scope::User, Scope::All]
+        .into_iter()
+        .any(|scope| registered_location(scope, ELECTRON_KEY).is_some())
+    {
+        return;
+    }
     let Some(local) = env::var_os("LOCALAPPDATA") else {
         return;
     };

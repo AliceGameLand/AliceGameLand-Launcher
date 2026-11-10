@@ -486,6 +486,10 @@ fn main() {
         .manage(updater::Updates::default())
         .setup(|app| {
             let test_profile = test_profile()?;
+            #[cfg(windows)]
+            if test_profile.is_none() {
+                wizard::clear_legacy_updater_cache();
+            }
             let login_mode = std::env::var_os("ALICE_TAURI_VERIFY_LOGIN");
             let login_receipt = test_profile
                 .as_ref()
