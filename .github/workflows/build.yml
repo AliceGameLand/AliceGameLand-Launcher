@@ -19,13 +19,6 @@ jobs:
       - run: npm run lint
       - run: node --test test/*.test.js
       - run: npm run dist:setup
-      - name: Verify the public updater, all-users setup, and Korean paths
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          Get-WinSystemLocale | Format-List Name
-          (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage' -Name ACP).ACP
-          node scripts/qa-electron-release.mjs
       - uses: actions/upload-artifact@v6
         with:
           name: electron-1.0.42-verified
@@ -34,3 +27,10 @@ jobs:
             dist/custom-setup/*.blockmap
             dist/custom-setup/latest.yml
           if-no-files-found: error
+      - name: Verify the public updater, all-users setup, and Korean paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Get-WinSystemLocale | Format-List Name
+          (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage' -Name ACP).ACP
+          node scripts/qa-electron-release.mjs

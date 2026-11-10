@@ -109,14 +109,18 @@ try {
         let installedHash
         for(let attempt = 0; attempt < 120; attempt++){
             installedHash = await sha(installed).catch(() => null)
-            if(installedHash === expected && !await fs.access(path.join(target, 'resources/runtime')).then(() => true, () => false)) break
+            if(installedHash === expected && registry(hive) && !await fs.access(path.join(target, 'resources/runtime')).then(() => true, () => false)) break
             await delay(1000)
         }
         assert.equal(installedHash, expected, 'The real legacy updater did not replace its installation')
         await assert.rejects(fs.access(path.join(target, 'resources/runtime')), { code:'ENOENT' })
         assert.equal(await fs.readFile(userData, 'utf8'), 'keep me')
-        assert(registry(hive))
+        assert(registry(hive), 'Updated installer did not finish registering in ' + hive)
+        const updatedRegistration = await findUpdateTarget(promisify(execFile), existsSync)
+        assert.equal(updatedRegistration.mode, registered.mode)
+        assert.equal(await fs.realpath(updatedRegistration.destination), await fs.realpath(target))
         run(path.join(target, 'Uninstall ' + launcherName), ['/S', '/' + scope])
+        for(let attempt = 0; registry(hive) && attempt < 45; attempt++) await delay(1000)
         assert(!registry(hive), 'Installation still registered after uninstall')
         console.log('UPDATER_1_0_41_PASSED', scope)
     }
