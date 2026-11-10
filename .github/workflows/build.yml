@@ -1,40 +1,36 @@
-name: Windows Release
+name: Windows Release QA
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  release:
-    runs-on: windows-latest
-
-    permissions:
-      contents: write
-
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 20
     steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
-        run: node --test test/*.test.js
-
-      - name: Build custom setup and update feed
-        run: npm run dist:setup
-
-      - name: Publish Windows release
+      - run: npm ci
+      - run: npm run lint
+      - run: node --test test/*.test.js
+      - run: npm run dist:setup
+      - name: Verify the public updater, all-users setup, and Korean paths
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          gh release create "v$version" "dist/custom-setup/alice-gameland-setup-$version.exe" "dist/custom-setup/alice-gameland-setup-$version.exe.blockmap" "dist/custom-setup/latest.yml" --title "Launcher $version" --generate-notes --latest --target $env:GITHUB_SHA
+          Get-WinSystemLocale | Format-List Name
+          (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage' -Name ACP).ACP
+          node scripts/qa-electron-release.mjs
+      - uses: actions/upload-artifact@v6
+        with:
+          name: electron-1.0.42-verified
+          path: |
+            dist/custom-setup/*.exe
+            dist/custom-setup/*.blockmap
+            dist/custom-setup/latest.yml
+          if-no-files-found: error
