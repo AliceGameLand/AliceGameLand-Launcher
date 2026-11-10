@@ -98,10 +98,21 @@ impl Preferences {
         self.settings.launcher.data_directory.as_deref()
     }
     pub fn launch_settings(&self, server_id: &str) -> (GameSettings, JavaOptions) {
-        (
-            self.settings.game.clone(),
-            self.java_config.get(server_id).cloned().unwrap_or_default(),
-        )
+        let mut java = self.java_config.get(server_id).cloned().unwrap_or_default();
+        java.jvm_options.get_or_insert_with(|| {
+            [
+                "-XX:+UnlockExperimentalVMOptions",
+                "-XX:+UseG1GC",
+                "-XX:G1NewSizePercent=20",
+                "-XX:G1ReservePercent=20",
+                "-XX:MaxGCPauseMillis=50",
+                "-XX:G1HeapRegionSize=32M",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+        });
+        (self.settings.game.clone(), java)
     }
 
     pub fn settings(&self) -> &Settings {
