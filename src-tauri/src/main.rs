@@ -190,6 +190,49 @@ async fn choose_game_folder(
         .transpose()
 }
 
+#[tauri::command]
+async fn choose_java_executable(
+    window: tauri::WebviewWindow,
+    current: Option<PathBuf>,
+) -> Result<Option<PathBuf>, String> {
+    let mut picker = window
+        .dialog()
+        .file()
+        .set_parent(&window)
+        .set_title("Java 25 실행 파일 선택");
+    if let Some(directory) = current
+        .as_deref()
+        .and_then(std::path::Path::parent)
+        .filter(|path| path.is_dir())
+    {
+        picker = picker.set_directory(directory);
+    }
+    #[cfg(windows)]
+    {
+        picker = picker.add_filter("Java", &["exe"]);
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    picker.pick_file(move |choice| {
+        let _ = sender.send(choice);
+    });
+    let Some(choice) = receiver
+        .await
+        .map_err(|_| "파일 선택 창을 열지 못했어요.")?
+    else {
+        return Ok(None);
+    };
+    let path = choice
+        .into_path()
+        .map_err(|_| "Java 실행 파일 경로를 읽지 못했어요.")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        java::validate_custom(&path)
+            .map(Some)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|_| "Java 실행 파일 확인이 중단됐어요.")?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JavaSettings {
@@ -490,6 +533,7 @@ fn main() {
             play_server,
             game_settings,
             choose_game_folder,
+            choose_java_executable,
             java_settings,
             save_game_settings,
             open_game_folder,

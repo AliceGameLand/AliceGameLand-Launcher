@@ -29,7 +29,10 @@ let viewRevision = 0
 let homeInitialized = false
 let statusRequest = 0
 let selectedGameDirectory = null
-const javaSettings = createJavaSettings(document)
+const javaSettings = createJavaSettings(document,
+    current => core.invoke('choose_java_executable', { current }),
+    (error, opener) => showError('Java 실행 파일을 선택하지 못했어요', error, opener)
+)
 const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
 const launcherSettings = byId('settingsTabLauncher')
 const gameDirectory = launcherSettings.querySelector('[cValue=DataDirectory]')
@@ -48,8 +51,18 @@ for (const [suffix, action] of [['close', 'close'], ['minimize', 'minimize'], ['
     const control = byId('frameButton_' + suffix) ?? byId('frameButtonDarwin_' + suffix)
     control.addEventListener('click', () => frame[action]())
 }
-for (const area of document.querySelectorAll('.frame-brand, .frame-spacer')) {
-    area.setAttribute('data-tauri-drag-region', '')
+const titleBar = byId('frameBar')
+if (titleBar.classList.contains('frame-mac')) {
+    titleBar.addEventListener('mousedown', event => {
+        if (event.button !== 0 || event.ctrlKey || event.target.closest('.frame-controls, .frame-home-actions')) return
+        event.preventDefault()
+        if (event.detail === 2) void frame.toggleMaximize()
+        else void frame.startDragging()
+    })
+} else {
+    for (const area of titleBar.querySelectorAll('.frame-brand, .frame-spacer')) {
+        area.setAttribute('data-tauri-drag-region', '')
+    }
 }
 
 async function showView(id) {

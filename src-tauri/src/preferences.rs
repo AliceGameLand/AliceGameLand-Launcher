@@ -58,6 +58,7 @@ pub struct JavaOptions {
     #[serde(rename = "maxRAM")]
     pub max_ram: Option<String>,
     pub jvm_options: Option<Vec<String>>,
+    pub custom_executable: Option<PathBuf>,
 }
 
 pub fn heap_megabytes(value: &str) -> Option<u32> {
@@ -283,6 +284,7 @@ mod tests {
             min_ram: Some("3072M".into()),
             max_ram: Some("6G".into()),
             jvm_options: Some(vec!["-Dexample=one value".into()]),
+            custom_executable: Some(directory.join("java")),
         };
         preferences
             .update_game_settings(
@@ -310,6 +312,7 @@ mod tests {
         assert_eq!(java.min_ram.as_deref(), Some("3072M"));
         assert_eq!(java.max_ram.as_deref(), Some("6G"));
         assert_eq!(java.jvm_options.unwrap(), ["-Dexample=one value"]);
+        assert_eq!(java.custom_executable, Some(directory.join("java")));
 
         let partial = JavaOptions {
             max_ram: Some("3G".into()),

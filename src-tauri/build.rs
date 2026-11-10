@@ -15,6 +15,7 @@ fn main() {
             "play_server",
             "game_settings",
             "choose_game_folder",
+            "choose_java_executable",
             "java_settings",
             "save_game_settings",
             "open_game_folder",

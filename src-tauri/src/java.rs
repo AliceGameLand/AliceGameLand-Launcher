@@ -91,6 +91,50 @@ fn validate(executable: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_custom(executable: &Path) -> Result<PathBuf> {
+    let selected = if cfg!(target_os = "macos")
+        && executable
+            .extension()
+            .is_some_and(|extension| extension == "jdk")
+        && executable.is_dir()
+    {
+        executable.join("Contents/Home/bin/java")
+    } else {
+        executable.to_path_buf()
+    };
+    let expected = if cfg!(windows) { "java.exe" } else { "java" };
+    if !selected.is_absolute()
+        || !selected.is_file()
+        || !selected
+            .file_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case(expected))
+    {
+        return Err("JDK의 bin 폴더에서 Java 실행 파일을 선택해 주세요.".into());
+    }
+    let output = command(&selected)
+        .args(["-XshowSettings:properties", "-version"])
+        .output()
+        .map_err(|_| "선택한 Java를 실행할 수 없어요.")?;
+    let reported = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        || !(reported.contains("version \"25.") || reported.contains("version \"25\""))
+    {
+        return Err("Java 25 실행 파일을 선택해 주세요.".into());
+    }
+    let architecture = reported
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("os.arch = "));
+    let compatible = if cfg!(windows) {
+        matches!(architecture, Some("amd64" | "x86_64"))
+    } else {
+        matches!(architecture, Some("aarch64" | "arm64"))
+    };
+    if !compatible {
+        return Err("이 컴퓨터와 같은 아키텍처의 Java 25를 선택해 주세요.".into());
+    }
+    Ok(selected)
+}
+
 #[cfg(windows)]
 fn install_launcher(destination: &Path, executable: &Path) -> Result<()> {
     let bin = destination.join("bin");
@@ -219,6 +263,8 @@ mod tests {
         assert!(cached_executable(cache.path()).is_none());
         let executable = prepare(cache.path())?;
         assert!(executable.is_file());
+        let stock = executable.with_file_name(if cfg!(windows) { "java.exe" } else { "java" });
+        assert_eq!(validate_custom(&stock)?, stock);
         assert_eq!(cached_executable(cache.path()).as_ref(), Some(&executable));
         let marker = cache_destination(cache.path()).join("cache-check");
         fs::write(&marker, b"first preparation")?;

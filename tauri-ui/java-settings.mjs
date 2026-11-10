@@ -16,7 +16,7 @@ function gibibytes(value, fallback) {
     return match ? Number(match[1]) / (match[2].toLowerCase() === 'm' ? 1024 : 1) : fallback
 }
 
-export function createJavaSettings(document) {
+export function createJavaSettings(document, chooseExecutable, onError) {
     const byId = id => document.getElementById(id)
     const fields = ['Min', 'Max'].map(name => ({
         slider: byId('settings' + name + 'RAMRange'),
@@ -76,17 +76,53 @@ export function createJavaSettings(document) {
         })
     }
 
-    byId('settingsJavaExecSel').disabled = true
+    const executableInput = byId('settingsJavaExecVal')
+    const executableDetails = byId('settingsJavaExecDetails')
+    const choose = byId('settingsJavaExecSel')
+    const reset = document.createElement('button')
+    reset.type = 'button'
+    reset.className = 'settingsFileSelButton'
+    reset.textContent = '자동 선택'
+    reset.hidden = true
+    choose.after(reset)
+    let selectedExecutable = null
+    let automaticExecutable = null
 
+    function showExecutable() {
+        executableInput.value = selectedExecutable ?? automaticExecutable ?? ''
+        executableDetails.textContent = selectedExecutable ? '사용자 지정 Java 25'
+            : automaticExecutable ? 'Temurin Java 25' : '첫 게임 실행 때 Java 25를 내려받아요.'
+        reset.hidden = !selectedExecutable
+    }
+
+    choose.addEventListener('click', async () => {
+        const serverId = activeServerId
+        choose.disabled = reset.disabled = true
+        try {
+            const selected = await chooseExecutable(selectedExecutable ?? automaticExecutable)
+            if (selected && activeServerId === serverId) {
+                selectedExecutable = selected
+                showExecutable()
+            }
+        } catch (error) {
+            onError(error, choose)
+        } finally {
+            choose.disabled = reset.disabled = false
+        }
+    })
+    reset.addEventListener('click', () => {
+        selectedExecutable = null
+        showExecutable()
+        choose.focus()
+    })
 
     return {
         load(server, snapshot) {
             activeServerId = server.id
             byId('settingsJavaReqDesc').textContent = 'Java 25'
-            byId('settingsJavaExecDetails').textContent = snapshot.executable
-                ? 'Temurin Java 25'
-                : '첫 게임 실행 때 Java 25를 내려받아요.'
-            byId('settingsJavaExecVal').value = snapshot.executable ?? ''
+            selectedExecutable = snapshot.options.customExecutable ?? null
+            automaticExecutable = snapshot.executable ?? null
+            showExecutable()
             byId('settingsJvmOptsLink').hidden = true
             const giga = 1024 ** 3
             const total = snapshot.memory?.total / giga
@@ -120,8 +156,9 @@ export function createJavaSettings(document) {
         },
         change() {
             const editedArguments = argumentsInput.value !== originalArguments
-            if (!rangeChanged && !editedArguments) return null
-            const options = { ...originalOptions }
+            const changedExecutable = selectedExecutable !== (originalOptions.customExecutable ?? null)
+            if (!rangeChanged && !editedArguments && !changedExecutable) return null
+            const options = { ...originalOptions, customExecutable: selectedExecutable }
             if (rangeChanged) {
                 options.minRAM = Math.round(getValue(0) * 1024) + 'M'
                 options.maxRAM = Math.round(getValue(1) * 1024) + 'M'

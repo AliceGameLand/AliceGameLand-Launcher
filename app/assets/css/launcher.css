@@ -618,20 +618,20 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 #settingsContainer {
     display: grid;
     grid-template-columns: var(--nav-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     height: 100%;
     line-height: 1.6;
 }
 #settingsContainerLeft {
     min-height: 0;
     padding: 28px 16px;
-    overflow: auto;
+    overflow: hidden;
     border-right: 1px solid var(--line);
     background: var(--rail);
 }
-#settingsNavContainer, #settingsNavItemsContainer { display: flex; flex-direction: column; min-height: 100%; }
-#settingsNavHeader { margin: 0 14px 16px; font-size: 20px; font-weight: 700; }
-#settingsNavItemsContainer, #settingsNavItemsContent { flex: 1; }
-#settingsNavItemsContainer { min-height: 0; }
+#settingsNavContainer { display: flex; flex-direction: column; height: 100%; }
+#settingsNavHeader { flex: none; margin: 0 14px 16px; font-size: 20px; font-weight: 700; }
+#settingsNavItemsContainer { flex: 1; min-height: 0; overflow: auto; }
 #settingsNavItemsContent { display: flex; flex-direction: column; gap: 4px; padding: 3px; }
 .settingsNavItem {
     position: relative;
@@ -673,9 +673,9 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 .settingsNavItem[selected] svg { color: var(--blue); }
 .settingsNavSpacer { height: 1px; margin: 12px 14px; background: var(--line); flex: none; }
 .settingsNavDivider { display: none; }
-#settingsNavContentBottom { margin-top: auto; padding-top: 16px; }
+#settingsNavContentBottom { flex: none; padding: 16px 3px 3px; }
 #settingsNavDone { width: 100%; padding-inline: 6px; white-space: nowrap; }
-#settingsContainerRight { min-width: 0; min-height: 0; background: var(--surface); }
+#settingsContainerRight { min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
 .settingsTab {
     width: 100%;
     height: 100%;
@@ -834,7 +834,7 @@ input:checked + .toggleSwitchSlider {
     border: 1px solid var(--blue);
 }
 input:checked + .toggleSwitchSlider:before {
-    transform: translateX(15px);
+    transform: translateX(18px);
 }
 
 /* Range Slider styles. */
@@ -1498,7 +1498,7 @@ input:checked + .toggleSwitchSlider:before {
 }
 
 /* Preserve the existing settings controls and their layout hooks. */
-.home-server-list, .home-stage, #settingsContainerLeft, .settingsTab,
+.home-server-list, .home-stage, #settingsNavItemsContainer, .settingsTab,
 #serverSelectListScrollable, #accountSelectListScrollable { scrollbar-width: thin; }
 #settingsContainer :is(.settingsFieldContainer, .settingsAuthAccountTypeContainer, .settingsSelServContainer,
     .settingsFileSelContainer, .settingsChangelogContainer, .settingsDivider, #settingsMemoryContainer,

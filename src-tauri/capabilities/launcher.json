@@ -18,6 +18,7 @@
     "allow-play-server",
     "allow-game-settings",
     "allow-choose-game-folder",
+    "allow-choose-java-executable",
     "allow-java-settings",
     "allow-save-game-settings",
     "allow-open-game-folder",

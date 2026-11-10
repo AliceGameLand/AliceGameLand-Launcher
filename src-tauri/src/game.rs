@@ -72,6 +72,7 @@ fn prepare_files(
     profile: &Path,
     root: &Path,
     server_id: &str,
+    custom_java: Option<&Path>,
     progress: &Channel<&'static str>,
 ) -> Result<(Server, PathBuf)> {
     if !root.is_absolute() {
@@ -86,7 +87,10 @@ fn prepare_files(
         .ok_or("배포 목록에서 서버를 찾지 못했어요.")?;
 
     let _ = progress.send("Java 25 확인 중");
-    let java = java::prepare(&profile.join("java"))?;
+    let java = match custom_java {
+        Some(path) => java::validate_custom(path)?,
+        None => java::prepare(&profile.join("java"))?,
+    };
     let _ = progress.send("게임 파일 확인 중");
     fs::create_dir_all(root)?;
     let canonical_root = root.canonicalize()?;
@@ -289,7 +293,13 @@ fn prepare_launch(
     session: GameSession,
     progress: &Channel<&'static str>,
 ) -> Result<PreparedLaunch> {
-    let (server, java) = prepare_files(&launch.profile, &launch.root, &launch.server_id, progress)?;
+    let (server, java) = prepare_files(
+        &launch.profile,
+        &launch.root,
+        &launch.server_id,
+        launch.java_options.custom_executable.as_deref(),
+        progress,
+    )?;
     let common = launch.root.join("common");
     let instance = launch.root.join("instances").join(&server.id);
     // Windows Java converts command-line arguments through the system code page.
