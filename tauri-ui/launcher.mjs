@@ -816,6 +816,7 @@ async function initializeHome() {
         launchDetails.hidden = false
         try {
             await core.invoke('play_server', { serverId: server.id, progress })
+            await new Promise(resolve => window.setTimeout(resolve, 7000))
         } catch (error) {
             showError('게임을 시작하지 못했어요', error, playButton)
         } finally {
