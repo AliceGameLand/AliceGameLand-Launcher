@@ -36,7 +36,7 @@ const html = markup.replace(
 
 await mkdir(output, { recursive: true })
 const assets = [
-    'css', 'fonts/PretendardVariable.woff2', 'fonts/Pretendard-LICENSE.txt',
+    'css', 'fonts/Avenir-Medium.ttf', 'fonts/PretendardVariable.woff2', 'fonts/Pretendard-LICENSE.txt',
     'images/SealCircle.png', 'images/LoadingSeal.png', 'images/icons/profile.svg',
     'images/backgrounds/0.jpg', 'images/backgrounds/servers', 'images/server-icons'
 ]
