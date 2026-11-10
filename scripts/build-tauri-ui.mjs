@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import ejs from 'ejs'
@@ -35,8 +35,18 @@ const html = markup.replace(
 ).replace('</head>', '    <script type="module" src="./launcher.mjs"></script>\n</head>')
 
 await mkdir(output, { recursive: true })
-for (const folder of ['css', 'fonts', 'images']) {
-    await cp(path.join(app, 'assets', folder), path.join(output, 'assets', folder), { recursive: true })
+const assets = [
+    'css', 'fonts/PretendardVariable.woff2', 'fonts/Pretendard-LICENSE.txt',
+    'images/SealCircle.png', 'images/LoadingSeal.png', 'images/icons/profile.svg',
+    'images/backgrounds/0.jpg', 'images/backgrounds/servers', 'images/server-icons'
+]
+for (const folder of ['fonts', 'images']) {
+    await rm(path.join(output, 'assets', folder), { recursive: true, force: true })
+}
+for (const asset of assets) {
+    const destination = path.join(output, 'assets', asset)
+    await mkdir(path.dirname(destination), { recursive: true })
+    await cp(path.join(app, 'assets', asset), destination, { recursive: true })
 }
 await mkdir(path.join(output, 'assets', 'js'), { recursive: true })
 for (const name of ['serverart.js', 'servericon.js', 'artworktransition.js', 'uiclick.js']) {

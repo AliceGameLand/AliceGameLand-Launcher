@@ -44,7 +44,7 @@ foreach ($mode in $Scope) {
     $hive = if ($mode -eq 'allusers') { 'HKEY_LOCAL_MACHINE' } else { 'HKEY_CURRENT_USER' }
     $fixture = Join-Path ([IO.Path]::GetTempPath()) ('Alice Tauri setup test ' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $fixture | Out-Null
-    $root = Join-Path $fixture 'alice-gameland-tauri-preview'
+    $root = Join-Path $fixture 'alice-gameland-launcher'
     Invoke-NsisWorker $installerPath "/S /$mode /D=$root" $fixture
 
     $files = @(Get-ChildItem -LiteralPath $root -File)

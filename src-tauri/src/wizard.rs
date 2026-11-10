@@ -40,7 +40,8 @@ use windows::{
     },
 };
 
-const FOLDER: &str = "alice-gameland-tauri-preview";
+const FOLDER: &str = "alice-gameland-launcher";
+const PREVIEW_FOLDER: &str = "alice-gameland-tauri-preview";
 const LAUNCHER: &str = "AliceGameLand-Tauri.exe";
 const UNINSTALLER: &str = "Uninstall AliceGameLand-Tauri.exe";
 const INSTALL_KEY: PCWSTR = w!(r"Software\69bd89cc-35ff-5408-9b98-972ba4fb446c");
@@ -206,6 +207,16 @@ fn update_target(scope: Option<Scope>) -> Option<UpdateTarget> {
             .into_iter()
             .find_map(registered_update_target),
     }
+    .map(|mut target| {
+        if target
+            .destination
+            .file_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case(PREVIEW_FOLDER))
+        {
+            target.destination.set_file_name(FOLDER);
+        }
+        target
+    })
 }
 
 pub(crate) fn update_scope_for_running_install() -> Option<Scope> {
@@ -506,11 +517,15 @@ fn install(
     if update != update_target(update_scope) || (update_scope.is_some() && update.is_none()) {
         return Err("기존 설치 위치가 바뀌었어요. 설치 파일을 다시 실행해 주세요.".into());
     }
-    let updating = update.is_some();
+    let updating = update.as_ref().is_some_and(|target| {
+        registered_directory(target.mode).as_ref() == Some(&target.destination)
+    });
     let (target, mode) = if let Some(update) = update {
         (update.destination, update.mode)
     } else {
-        let target = destination(&options.destination)?;
+        (destination(&options.destination)?, options.mode)
+    };
+    if !updating {
         match fs::read_dir(&target) {
             Ok(mut entries) => {
                 if entries.next().is_some() {
@@ -520,8 +535,7 @@ fn install(
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(_) => return Err(INVALID_PATH.into()),
         }
-        (target, options.mode)
-    };
+    }
     let _ = progress.send(Progress {
         phase: "checking",
         percent: Some(100),

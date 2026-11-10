@@ -60,7 +60,7 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 #main {
     position: relative;
     display: none;
-    height: calc(100% - var(--frame-height));
+    height: calc(100dvh - var(--frame-height));
 }
 
 .primary-button,
@@ -623,13 +623,14 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
     line-height: 1.6;
 }
 #settingsContainerLeft {
+    display: flex;
     min-height: 0;
     padding: 28px 16px;
     overflow: hidden;
     border-right: 1px solid var(--line);
     background: var(--rail);
 }
-#settingsNavContainer { display: flex; flex-direction: column; height: 100%; }
+#settingsNavContainer { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 #settingsNavHeader { flex: none; margin: 0 14px 16px; font-size: 20px; font-weight: 700; }
 #settingsNavItemsContainer { flex: 1; min-height: 0; overflow: auto; }
 #settingsNavItemsContent { display: flex; flex-direction: column; gap: 4px; padding: 3px; }
