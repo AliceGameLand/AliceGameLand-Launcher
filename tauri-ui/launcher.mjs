@@ -8,6 +8,7 @@ import { createJavaSettings } from './java-settings.mjs'
 const byId = id => document.getElementById(id)
 const { core, window: windowApi } = window.__TAURI__
 const frame = windowApi.getCurrentWindow()
+const startupLoading = new Promise(resolve => window.setTimeout(resolve, 2000))
 uiClick.bindUiClickSound(document, window)
 const transitionArtwork = artworkTransition.createArtworkTransition(document.querySelector('.home-art'))
 const loginButton = byId('loginOptionMicrosoft')
@@ -52,6 +53,7 @@ for (const area of document.querySelectorAll('.frame-brand, .frame-spacer')) {
 }
 
 async function showView(id) {
+    if (!visibleView) await startupLoading
     const revision = ++viewRevision
     viewFade?.cancel()
     const animate = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
