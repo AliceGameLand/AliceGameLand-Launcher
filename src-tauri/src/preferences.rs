@@ -10,6 +10,13 @@ use serde_json::Value;
 
 const LEGACY_APP: &str = "앨리스의 게임랜드";
 
+pub(crate) fn legacy_configs(data_root: &Path) -> [PathBuf; 2] {
+    [
+        data_root.join(LEGACY_APP).join("config.json"),
+        data_root.join(".alicegameland").join("config.json"),
+    ]
+}
+
 #[derive(Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
@@ -150,8 +157,8 @@ impl Preferences {
 
         let mut preferences = Self::default();
         let mut imported_legacy = false;
-        for legacy in [data_root.join(LEGACY_APP), data_root.join(".alicegameland")] {
-            if let Some(imported) = read(&legacy.join("config.json"))? {
+        for legacy in legacy_configs(data_root) {
+            if let Some(imported) = read(&legacy)? {
                 preferences = imported;
                 imported_legacy = true;
                 break;

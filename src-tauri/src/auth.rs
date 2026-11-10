@@ -1,4 +1,7 @@
 use std::{
+    fs::{self, File},
+    io,
+    path::Path,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -21,6 +24,7 @@ const SCOPE: &str = "XboxLive.signin offline_access";
 const WINDOW_LABEL: &str = "microsoft-login";
 const CREDENTIAL_SERVICE: &str = "kr.dreamcraft.alicegameland.launcher";
 const CREDENTIAL_USER: &str = "microsoft-tauri";
+const LEGACY_ACCOUNT_SIGNED_OUT: &str = "electron-account-signed-out";
 const CLIENT_CONFIG: &str = include_str!("../../app/assets/config/auth.json");
 static LOGIN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -328,9 +332,110 @@ async fn save_account(account: SavedAccount) -> Result<Profile> {
     .map_err(|_| "계정 저장이 중단됐어요.")?
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyAccounts {
+    selected_account: Option<String>,
+    #[serde(default)]
+    authentication_database: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyAccount {
+    #[serde(rename = "type")]
+    kind: String,
+    display_name: String,
+    uuid: String,
+    microsoft: LegacyMicrosoft,
+}
+
+#[derive(Deserialize)]
+struct LegacyMicrosoft {
+    refresh_token: String,
+}
+
+fn read_legacy_account(data_root: &Path) -> io::Result<Option<SavedAccount>> {
+    for path in crate::preferences::legacy_configs(data_root) {
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        let source: LegacyAccounts = serde_json::from_reader(file)?;
+        let Some(account) = source
+            .selected_account
+            .and_then(|id| source.authentication_database.get(&id))
+            .and_then(|account| LegacyAccount::deserialize(account).ok())
+        else {
+            return Ok(None);
+        };
+        let id = account.uuid.replace('-', "").to_ascii_lowercase();
+        let name = account.display_name.trim();
+        if account.kind != "microsoft"
+            || name.is_empty()
+            || id.len() != 32
+            || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || account.microsoft.refresh_token.trim().is_empty()
+        {
+            return Ok(None);
+        }
+        return Ok(Some(SavedAccount {
+            profile: Profile {
+                id,
+                name: name.to_owned(),
+                skins: Vec::new(),
+            },
+            refresh_token: account.microsoft.refresh_token,
+        }));
+    }
+    Ok(None)
+}
+
+fn mark_legacy_account_signed_out(profile: &Path) -> Result<()> {
+    fs::create_dir_all(profile)
+        .and_then(|()| fs::write(profile.join(LEGACY_ACCOUNT_CHECKED), b""))
+        .map_err(|_| "계정 이전 상태를 저장하지 못했어요.".into())
+}
+
+fn account_paths(app: &AppHandle) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
+    if let Some(profile) =
+        crate::test_profile().map_err(|_| "테스트 프로필을 확인하지 못했어요.")?
+    {
+        return Ok((profile.clone(), profile));
+    }
+    let path = app.path();
+    Ok((
+        path.app_data_dir()
+            .map_err(|_| "런처 설정 위치를 찾지 못했어요.")?,
+        path.data_dir()
+            .map_err(|_| "기존 계정 위치를 찾지 못했어요.")?,
+    ))
+}
+
 #[tauri::command]
-pub async fn account_profile() -> Result<Option<Profile>> {
-    Ok(load_account().await?.map(|account| account.profile))
+pub async fn account_profile(app: AppHandle) -> Result<Option<Profile>> {
+    let _login = LOGIN.lock().await;
+    if let Some(account) = load_account().await? {
+        return Ok(Some(account.profile));
+    }
+    let (profile, data_root) = account_paths(&app)?;
+    let account = tauri::async_runtime::spawn_blocking(move || {
+        if profile
+            .join(LEGACY_ACCOUNT_CHECKED)
+            .try_exists()
+            .map_err(|_| "계정 이전 상태를 확인하지 못했어요.")?
+        {
+            return Ok::<_, String>(None);
+        }
+        read_legacy_account(&data_root).map_err(|_| "기존 Microsoft 계정을 읽지 못했어요.".into())
+    })
+    .await
+    .map_err(|_| "계정 이전이 중단됐어요.")??;
+    match account {
+        Some(account) => save_account(account).await.map(Some),
+        None => Ok(None),
+    }
 }
 
 async fn fetch_avatar(id: &str) -> Result<String> {
@@ -416,13 +521,18 @@ pub async fn microsoft_sign_in(app: AppHandle) -> Result<Profile> {
 }
 
 #[tauri::command]
-pub async fn microsoft_sign_out() -> Result<()> {
+pub async fn microsoft_sign_out(app: AppHandle) -> Result<()> {
     let _login = LOGIN
         .try_lock()
         .map_err(|_| "이미 Microsoft 로그인이 진행 중이에요.")?;
-    tauri::async_runtime::spawn_blocking(|| match credential()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(_) => Err("운영체제의 계정 보관함에서 계정을 삭제하지 못했어요.".into()),
+    let (profile, _) = account_paths(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        // The Electron configuration remains usable even after a Tauri sign-out.
+        mark_legacy_account_checked(&profile)?;
+        match credential()?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err("운영체제의 계정 보관함에서 계정을 삭제하지 못했어요.".into()),
+        }
     })
     .await
     .map_err(|_| "로그아웃이 중단됐어요.")?
@@ -459,6 +569,39 @@ pub async fn game_session() -> Result<GameSession> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imports_only_the_selected_microsoft_account_from_the_active_config() {
+        let root = tempfile::tempdir().unwrap();
+        let [current, old] = crate::preferences::legacy_configs(root.path());
+        for path in [&current, &old] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+        }
+        fs::write(
+            &old,
+            serde_json::to_vec(&json!({
+                "selectedAccount": "active",
+                "authenticationDatabase": {
+                    "inactive": true,
+                    "active": {
+                        "type": "microsoft",
+                        "displayName": " Sample ",
+                        "uuid": "ABCD0000-0000-0000-0000-000000000001",
+                        "microsoft": { "refresh_token": "fixture-token" }
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let imported = read_legacy_account(root.path()).unwrap().unwrap();
+        assert_eq!(imported.profile.name, "Sample");
+        assert_eq!(imported.profile.id, "abcd0000000000000000000000000001");
+        assert_eq!(imported.refresh_token, "fixture-token");
+
+        fs::write(&current, b"{}").unwrap();
+        assert!(read_legacy_account(root.path()).unwrap().is_none());
+    }
 
     #[test]
     fn accepts_only_the_registered_origin_path_and_state() {
