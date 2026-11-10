@@ -17,12 +17,6 @@
     SetRegView 64
     ${If} $R2 == ""
     ${OrIf} $R2 == "0.0.0.0"
-      ${IfNot} ${Silent}
-        MessageBox MB_OKCANCEL|MB_ICONINFORMATION "설치 화면을 열려면 Microsoft Edge WebView2가 필요해요." IDOK tauriInstallWebView2
-        SetErrorLevel 1
-        Quit
-      ${EndIf}
-      tauriInstallWebView2:
       InitPluginsDir
       File /oname=$PLUGINSDIR\MicrosoftEdgeWebView2Setup.exe "$%ALICE_WEBVIEW2_SETUP%"
       ClearErrors
