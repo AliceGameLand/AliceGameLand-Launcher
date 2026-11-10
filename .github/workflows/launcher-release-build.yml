@@ -1,0 +1,47 @@
+name: Launcher release build
+on:
+  push:
+    branches: [codex/tauri-migration]
+permissions:
+  contents: read
+jobs:
+  package:
+    if: contains(github.event.head_commit.message, '[build-only]')
+    strategy:
+      matrix:
+        include:
+          - runner: windows-2025
+            platform: windows-x64
+          - runner: macos-15
+            platform: macos-arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      ALICE_TAURI_UPDATE_PUBLIC_KEY: ${{ vars.ALICE_TAURI_UPDATE_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - if: runner.os == 'Windows'
+        run: |
+          npm run tauri -- build --ci --no-bundle -- --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node scripts/build-tauri-setup.mjs
+      - if: runner.os == 'macOS'
+        run: |
+          npm run tauri -- build --ci --bundles app,dmg -- --locked
+          mkdir -p dist/tauri-macos-update
+          bundle=src-tauri/target/release/bundle/macos
+          app=$(find "$bundle" -maxdepth 1 -name '*.app' -print -quit)
+          tar -czf dist/tauri-macos-update/alice-gameland-arm64.app.tar.gz -C "$bundle" "$(basename "$app")"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: launcher-${{ matrix.platform }}
+          path: |
+            dist/tauri-setup/*-setup.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+            dist/tauri-macos-update/*.app.tar.gz
+          if-no-files-found: error

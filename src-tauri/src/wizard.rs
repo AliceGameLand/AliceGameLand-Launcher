@@ -579,6 +579,41 @@ fn remove_electron(target: &Path, scope: Scope) -> Result<(), String> {
     Ok(())
 }
 
+fn clear_legacy_updater_cache() {
+    let Some(local) = env::var_os("LOCALAPPDATA") else {
+        return;
+    };
+    let cache = PathBuf::from(local).join("alice-gameland-launcher-updater");
+    let ordinary_directory = |path: &Path| {
+        use std::os::windows::fs::MetadataExt;
+        path.symlink_metadata()
+            .is_ok_and(|metadata| metadata.is_dir() && metadata.file_attributes() & 0x400 == 0)
+    };
+    if !ordinary_directory(&cache) {
+        return;
+    }
+    let pending = cache.join("pending");
+    if ordinary_directory(&pending) {
+        if let Ok(entries) = fs::read_dir(&pending) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if name == "update-info.json"
+                    || (name.starts_with("alice-gameland-")
+                        && (name.ends_with(".exe") || name.ends_with(".blockmap")))
+                {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+        let _ = fs::remove_dir(pending);
+    }
+    for name in ["installer.exe", "current.blockmap"] {
+        let _ = fs::remove_file(cache.join(name));
+    }
+    let _ = fs::remove_dir(cache);
+}
+
 fn install(
     backend: &Path,
     options: Options,
@@ -633,6 +668,7 @@ fn install(
     if !target.join(LAUNCHER).is_file() {
         return Err("설치한 런처를 찾지 못했어요.".into());
     }
+    clear_legacy_updater_cache();
     Ok(target)
 }
 

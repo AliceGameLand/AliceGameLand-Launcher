@@ -18,8 +18,8 @@ if (require('semver').valid(version) !== version) throw new Error('Invalid launc
 const root = path.resolve(import.meta.dirname, '..')
 const cli = path.join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js')
 const packages = [
-    { target: 'windows-x86_64', file: windows, magic: [0x4d, 0x5a], name: `alice-gameland-tauri-${version}-win-x64-setup.exe` },
-    { target: 'darwin-aarch64', file: mac, magic: [0x1f, 0x8b], name: `alice-gameland-tauri-${version}-mac-arm64.app.tar.gz` }
+    { target: 'windows-x86_64', file: windows, magic: [0x4d, 0x5a], name: `alice-gameland-setup-${version}.exe` },
+    { target: 'darwin-aarch64', file: mac, magic: [0x1f, 0x8b], name: `alice-gameland-${version}-mac-arm64.app.tar.gz` }
 ].filter(entry => entry.file)
 for (const entry of packages) {
     const file = await open(entry.file, 'r')
