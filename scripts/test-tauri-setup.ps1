@@ -104,15 +104,24 @@ foreach ($mode in $Scope) {
             Start-Sleep -Milliseconds 100
         }
         if ($launcher.HasExited) { throw "$mode launcher was not running before uninstall" }
+        Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER
         Invoke-NsisWorker $uninstaller[0].FullName "/$mode" $fixture
-        if (!$launcher.WaitForExit(5000)) { throw "$mode uninstall did not stop the launcher" }
-        if (!(Test-Path -LiteralPath $ready)) { throw "$mode removal window was not loaded" }
+        $wait = [Diagnostics.Stopwatch]::StartNew()
+        while (!(Test-Path -LiteralPath $ready) -or (Find-Preview $hive) -or
+            (Get-Process -Name 'AliceGameLand-Wizard' -ErrorAction SilentlyContinue)) {
+            if ($wait.Elapsed.TotalSeconds -ge 35) {
+                throw "$mode uninstall did not reach the completion screen (launcher exited: $($launcher.HasExited))"
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        if (!$launcher.HasExited) { throw "$mode uninstall did not stop the launcher" }
     } finally {
         if ($launcher) {
             if (!$launcher.HasExited) { Stop-Process -Id $launcher.Id }
             $launcher.Dispose()
         }
-        Remove-Item Env:ALICE_TAURI_TEST_PROFILE, Env:ALICE_TAURI_VERIFY_LOGIN, Env:ALICE_TAURI_VERIFY_REMOVE_WIZARD, Env:WEBVIEW2_USER_DATA_FOLDER
+        Remove-Item Env:WEBVIEW2_USER_DATA_FOLDER -ErrorAction SilentlyContinue
+        Remove-Item Env:ALICE_TAURI_TEST_PROFILE, Env:ALICE_TAURI_VERIFY_LOGIN, Env:ALICE_TAURI_VERIFY_REMOVE_WIZARD
     }
     if (Find-Preview $hive) {
         throw "$mode left an uninstall registration"
@@ -126,7 +135,13 @@ foreach ($mode in $Scope) {
     } elseif (Test-Path -LiteralPath $root) {
         throw 'Removal left an empty installation folder'
     }
-    Remove-Item -LiteralPath $fixture
+    $resolvedFixture = (Resolve-Path -LiteralPath $fixture).ProviderPath
+    $tempRoot = (Resolve-Path -LiteralPath ([IO.Path]::GetTempPath())).ProviderPath.TrimEnd('\')
+    if ((Split-Path -Parent $resolvedFixture) -ne $tempRoot -or
+        (Split-Path -Leaf $resolvedFixture) -notmatch '^Alice Tauri setup test [0-9a-f]{32}$') {
+        throw 'Unexpected test fixture path'
+    }
+    Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
     Write-Output "$mode installation and removal passed ($hive)"
 }
 
