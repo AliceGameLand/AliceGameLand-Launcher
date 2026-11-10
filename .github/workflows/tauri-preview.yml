@@ -170,12 +170,15 @@ jobs:
           kill -0 "$pid" 2>/dev/null || { cat "$profile/startup.log"; exit 1; }
           node -e 'const assert = require("node:assert/strict"); const data = require(process.argv[1]); assert.equal(data.settings.game.fullscreen, true); assert.equal(data.authenticationDatabase, undefined)' "$profile/preferences.json"
           echo "Packaged launcher reported $receipt on $(uname -m) and imported legacy preferences"
+          mkdir -p dist/tauri-macos-update
+          tar -czf dist/tauri-macos-update/alice-gameland-arm64.app.tar.gz -C "$mount" "$(basename "$app")"
       - uses: actions/upload-artifact@v6
         with:
           name: tauri-${{ matrix.platform }}
           path: |
             dist/tauri-setup/*-setup.exe
             src-tauri/target/release/bundle/dmg/*.dmg
+            dist/tauri-macos-update/*.app.tar.gz
           if-no-files-found: error
       - name: Compare Apple Silicon launcher startup and installer size
         if: runner.os == 'macOS' && (inputs.benchmark || contains(github.event.head_commit.message, '[benchmark-mac]'))

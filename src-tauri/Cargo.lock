@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "alice-gameland"
-version = "1.0.44"
+version = "1.0.45"
 dependencies = [
  "base64 0.22.1",
  "flate2",
