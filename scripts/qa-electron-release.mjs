@@ -6,7 +6,9 @@ import http from 'node:http'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
-import { spawn, spawnSync } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { promisify } from 'node:util'
 import { setTimeout as delay } from 'node:timers/promises'
 
 assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Run only on an isolated Actions worker')
@@ -19,6 +21,10 @@ const key = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\3d6e8bdf-a
 const fixture = await fs.mkdtemp(path.join(os.tmpdir(), 'Alice 업데이트 QA '))
 const sha = async file => createHash('sha256').update(await fs.readFile(file)).digest('hex')
 const expected = await sha(path.join(unpacked, launcherName))
+const { findUpdateTarget } = require('../installer/update-target.cjs')
+const userData = path.join(process.env.APPDATA, '.alicegameland', 'qa-user-file.txt')
+await fs.mkdir(path.dirname(userData), { recursive:true })
+await fs.writeFile(userData, 'keep me')
 const registry = hive => spawnSync('reg.exe', ['query', hive + '\\' + key], { windowsHide:true }).status === 0
 
 function run(executable, args, options = {}) {
@@ -83,7 +89,9 @@ try {
         run(legacy, ['/S', '/' + scope, '/D=' + target], { windowsVerbatimArguments:true })
         assert(registry(hive), 'Legacy installation did not register in ' + hive)
         assert.notEqual(await sha(installed), expected)
-        await fs.writeFile(path.join(target, 'qa-user-file.txt'), 'keep me')
+        const registered = await findUpdateTarget(promisify(execFile), existsSync)
+        assert.equal(registered.mode, scope === 'allusers' ? 'all' : 'user')
+        assert.equal(await fs.realpath(registered.destination), await fs.realpath(target))
         for(const file of await fs.readdir(target, {withFileTypes:true})){
             if(file.isFile() && !file.name.startsWith('Uninstall ')) await fs.copyFile(path.join(target, file.name), path.join(harness, file.name))
         }
@@ -105,7 +113,8 @@ try {
             await delay(1000)
         }
         assert.equal(installedHash, expected, 'The real legacy updater did not replace its installation')
-        assert.equal(await fs.readFile(path.join(target, 'qa-user-file.txt'), 'utf8'), 'keep me')
+        await assert.rejects(fs.access(path.join(target, 'resources/runtime')), { code:'ENOENT' })
+        assert.equal(await fs.readFile(userData, 'utf8'), 'keep me')
         assert(registry(hive))
         run(path.join(target, 'Uninstall ' + launcherName), ['/S', '/' + scope])
         assert(!registry(hive), 'Installation still registered after uninstall')
