@@ -25,4 +25,5 @@ if (frame.label === 'setup-wizard') {
         start: () => core.invoke('wizard_remove')
     }
     await import('./remove.mjs')
+    if (info.verifyRemovalWindow) await frame.close()
 }

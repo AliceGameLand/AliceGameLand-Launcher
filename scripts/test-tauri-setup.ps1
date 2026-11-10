@@ -69,6 +69,22 @@ foreach ($mode in $Scope) {
         throw "$mode update did not replace the launcher and preserve the installation state"
     }
     Write-Output "$mode in-place update passed ($hive)"
+    $env:ALICE_TAURI_TEST_PROFILE = $fixture
+    $env:ALICE_TAURI_VERIFY_REMOVE_WIZARD = '1'
+    try {
+        Invoke-NsisWorker $uninstaller[0].FullName "/$mode" $fixture
+        $ready = Join-Path $fixture 'remove-wizard-ready'
+        $wait = [Diagnostics.Stopwatch]::StartNew()
+        while (!(Test-Path -LiteralPath $ready) -or (Get-Process -Name 'AliceGameLand-Wizard' -ErrorAction SilentlyContinue)) {
+            if ($wait.Elapsed.TotalSeconds -ge 25) { throw "$mode Control Panel removal window did not load and close" }
+            Start-Sleep -Milliseconds 100
+        }
+        if (!(Find-Preview $hive)) { throw "$mode cancellation removed the installation" }
+        Remove-Item -LiteralPath $ready
+        Write-Output "$mode Control Panel removal window passed ($hive)"
+    } finally {
+        Remove-Item Env:ALICE_TAURI_TEST_PROFILE, Env:ALICE_TAURI_VERIFY_REMOVE_WIZARD
+    }
     if ($mode -eq 'currentuser') {
         Remove-Item -LiteralPath $userFile
     }

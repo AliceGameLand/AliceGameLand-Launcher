@@ -226,6 +226,7 @@ struct Info {
     version: String,
     defaults: Option<Defaults>,
     update_target: Option<UpdateTarget>,
+    verify_removal_window: bool,
 }
 
 #[tauri::command]
@@ -240,10 +241,21 @@ fn wizard_info(app: tauri::AppHandle, state: State<'_, Wizard>) -> Result<Info, 
     } else {
         None
     };
+    let verify_removal_window = matches!(state.mode, Mode::Remove { .. })
+        && env::var_os("ALICE_TAURI_VERIFY_REMOVE_WIZARD").is_some();
+    let mut verified = false;
+    if verify_removal_window {
+        if let Some(profile) = crate::test_profile().map_err(|error| error.to_string())? {
+            fs::write(profile.join("remove-wizard-ready"), b"ready\n")
+                .map_err(|error| error.to_string())?;
+            verified = true;
+        }
+    }
     Ok(Info {
         version: app.package_info().version.to_string(),
         defaults,
         update_target: state.update_target.clone(),
+        verify_removal_window: verified,
     })
 }
 
@@ -661,11 +673,11 @@ pub fn run(context: tauri::Context<tauri::Wry>, mode: Mode) {
             installed: Mutex::new(None),
         })
         .setup(move |app| {
-            let executable = env::current_exe()?;
-            let data = executable
-                .parent()
-                .ok_or_else(|| io::Error::other("Missing wizard directory"))?
-                .join("webview");
+            // NSIS owns and restricts its extraction folder. WebView2 needs a user-owned profile.
+            let local_data = app.path().local_data_dir()?;
+            let data = tempfile::Builder::new()
+                .prefix("AliceGameLand-Wizard-")
+                .tempdir_in(local_data)?;
             let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App(page.into()))
                 .title(title)
                 .inner_size(720.0, 520.0)
@@ -673,8 +685,9 @@ pub fn run(context: tauri::Context<tauri::Wry>, mode: Mode) {
                 .decorations(false)
                 .resizable(resizable)
                 .center()
-                .data_directory(data)
+                .data_directory(data.path().to_path_buf())
                 .build()?;
+            app.manage(data);
             let owner = app.handle().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
