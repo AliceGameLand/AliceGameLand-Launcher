@@ -394,7 +394,7 @@ fn read_legacy_account(data_root: &Path) -> io::Result<Option<SavedAccount>> {
 
 fn mark_legacy_account_signed_out(profile: &Path) -> Result<()> {
     fs::create_dir_all(profile)
-        .and_then(|()| fs::write(profile.join(LEGACY_ACCOUNT_CHECKED), b""))
+        .and_then(|()| fs::write(profile.join(LEGACY_ACCOUNT_SIGNED_OUT), b""))
         .map_err(|_| "계정 이전 상태를 저장하지 못했어요.".into())
 }
 
@@ -422,7 +422,7 @@ pub async fn account_profile(app: AppHandle) -> Result<Option<Profile>> {
     let (profile, data_root) = account_paths(&app)?;
     let account = tauri::async_runtime::spawn_blocking(move || {
         if profile
-            .join(LEGACY_ACCOUNT_CHECKED)
+            .join(LEGACY_ACCOUNT_SIGNED_OUT)
             .try_exists()
             .map_err(|_| "계정 이전 상태를 확인하지 못했어요.")?
         {
@@ -528,7 +528,7 @@ pub async fn microsoft_sign_out(app: AppHandle) -> Result<()> {
     let (profile, _) = account_paths(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         // The Electron configuration remains usable even after a Tauri sign-out.
-        mark_legacy_account_checked(&profile)?;
+        mark_legacy_account_signed_out(&profile)?;
         match credential()?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(_) => Err("운영체제의 계정 보관함에서 계정을 삭제하지 못했어요.".into()),
