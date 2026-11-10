@@ -14,7 +14,7 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
     },
     "windows": [
-      { "label": "main", "create": false, "title": "앨리스의 게임랜드", "width": 1280, "height": 720, "minWidth": 640, "minHeight": 480, "decorations": false }
+      { "label": "main", "create": false, "title": "앨리스의 게임랜드", "width": 1280, "height": 720, "minWidth": 640, "minHeight": 480, "decorations": false, "center": true }
     ]
   },
   "bundle": {

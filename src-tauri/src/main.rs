@@ -480,6 +480,16 @@ fn main() {
         Ok(None) => {}
         Err(_) => std::process::exit(2),
     }
+    #[cfg(windows)]
+    {
+        use windows::{core::w, Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID};
+        // Use the same stable identity as the installed Windows shortcuts.
+        let _ = unsafe {
+            SetCurrentProcessExplicitAppUserModelID(w!(
+                "kr.dreamcraft.alicegameland.launcher.tauri-preview"
+            ))
+        };
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

@@ -59,13 +59,17 @@ foreach ($mode in $Scope) {
     $userFile = Join-Path $root 'user-settings.txt'
     Set-Content -LiteralPath $userFile -Value 'keep'
     $installedLauncher = Join-Path $root 'AliceGameLand.exe'
+    $desktop = if ($mode -eq 'allusers') { [Environment]::GetFolderPath('CommonDesktopDirectory') } else { [Environment]::GetFolderPath('DesktopDirectory') }
+    $shortcut = Join-Path $desktop '앨리스의 게임랜드.lnk'
+    $originalShortcut = (Get-FileHash -LiteralPath $shortcut).Hash
     $expectedPayload = (Get-FileHash -LiteralPath $installedLauncher).Hash
     Set-Content -LiteralPath $installedLauncher -Value 'previous launcher fixture'
     Invoke-NsisWorker $installerPath "/S --updated /$mode /D=$root" $fixture
     $updated = Find-Preview $hive
     if ((Get-FileHash -LiteralPath $installedLauncher).Hash -ne $expectedPayload -or
         (Get-Content -LiteralPath $userFile) -ne 'keep' -or
-        $updated.UninstallString -ne $registration.UninstallString) {
+        $updated.UninstallString -ne $registration.UninstallString -or
+        (Get-FileHash -LiteralPath $shortcut).Hash -ne $originalShortcut) {
         throw "$mode update did not replace the launcher and preserve the installation state"
     }
     Write-Output "$mode in-place update passed ($hive)"
