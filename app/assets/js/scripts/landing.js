@@ -406,7 +406,7 @@ function syncLauncherDiscordPresence(distro, serv){
 const GAME_READY_REGEX = /\]: Sound engine started/
 const SERVER_CONNECTING_REGEX = /ConnectScreen\/\]: Connecting to /
 const GAME_LAUNCH_REGEX = /^\[.+\]: (?:MinecraftForge .+ Initialized|ModLauncher .+ starting: .+|Loading Minecraft .+ with Fabric Loader .+)$/
-const MIN_LINGER = 5000
+const MIN_LINGER = 6500
 
 // Only the most recently started game controls the single Discord activity.
 function syncGameDiscordPresence(){

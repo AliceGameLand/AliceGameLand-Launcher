@@ -47,14 +47,23 @@ function createHarness(){
         showLaunchFailure: (...args) => failures.push(args),
         syncGameDiscordPresence: () => presence.push(context.runningGames.size),
         hasRPC: false, DiscordWrapper: { updateDetails(){} },
-        setTimeout: callback => { const id = {}; timers.set(id, callback); return id },
+        setTimeout: (callback, delay) => { const id = {}; timers.set(id, { callback, delay }); return id },
         clearTimeout: id => timers.delete(id),
-        MIN_LINGER: 5000, GAME_LAUNCH_REGEX: /game ready/,
+        MIN_LINGER: Number(source.match(/const MIN_LINGER = (\d+)/)[1]), GAME_LAUNCH_REGEX: /game ready/,
         SERVER_CONNECTING_REGEX: /connecting/, GAME_READY_REGEX: /sound ready/
     })
     vm.runInContext(source.slice(source.indexOf('async function dlAsync(')), context)
-    return { context, processes, resets, failures, presence, ready: () => Array.from(timers.values()).at(-1)() }
+    return { context, processes, resets, failures, presence, timers, ready: () => Array.from(timers.values()).at(-1).callback() }
 }
+
+test('The launching indicator stays visible for at least 6.5 seconds after spawning', async () => {
+    const h = createHarness()
+    await vm.runInContext('dlAsync("one",1)', h.context)
+    assert.deepEqual(Array.from(h.timers.values(), timer => timer.delay), [6500])
+    assert.deepEqual(h.resets, [])
+    h.ready()
+    assert.deepEqual(h.resets, [false])
+})
 
 test('Closing an earlier game preserves a later game and its preparation area', async () => {
     const h = createHarness()
