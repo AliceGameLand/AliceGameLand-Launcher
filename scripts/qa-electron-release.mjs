@@ -107,6 +107,10 @@ try {
         if(scope !== scopeToVerify) continue
         const target = path.join(fixture, scope, 'alice-gameland-launcher')
         const installed = path.join(target, launcherName)
+        if(scope === 'currentuser') {
+            // Seed the root to bypass the known crash in the public 1.0.41 default-folder lookup.
+            run('reg.exe', ['add', 'HKCU\\Software\\3d6e8bdf-a47b-5327-b17b-ac5678029a9c', '/v', 'InstallLocation', '/t', 'REG_SZ', '/d', target, '/f'])
+        }
         run(legacy, ['/S', '/' + scope, '/D=' + target], { windowsVerbatimArguments:true })
         assert(registry(hive), 'Legacy installation did not register in ' + hive)
         assert.notEqual(await sha(installed), expected)
@@ -144,6 +148,15 @@ try {
         for(let attempt = 0; registry(hive) && attempt < 45; attempt++) await delay(1000)
         assert(!registry(hive), 'Installation still registered after uninstall')
         console.log('UPDATER_1_0_41_PASSED', scope)
+        if(scope === 'currentuser'){
+            assert(!registry('HKCU') && !registry('HKLM'))
+            spawnSync('reg.exe', ['delete', 'HKCU\\Software\\3d6e8bdf-a47b-5327-b17b-ac5678029a9c', '/v', 'InstallLocation', '/f'], { windowsHide:true })
+            const fresh = path.join(fixture, '새 설치', 'alice-gameland-launcher')
+            run(path.join(output, release), ['/S', '/currentuser', '/D=' + fresh], { windowsVerbatimArguments:true })
+            assert.equal(await sha(path.join(fresh, launcherName)), expected)
+            assert(registry('HKCU'))
+            console.log('FRESH_CURRENT_USER_PASSED')
+        }
     }
 } finally {
     server.close()
