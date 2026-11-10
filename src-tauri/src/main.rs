@@ -30,6 +30,7 @@ struct Launcher {
     preferences_path: PathBuf,
     preferences: Mutex<Preferences>,
     login_receipt: Option<PathBuf>,
+    verify_oauth: bool,
 }
 
 impl Launcher {
@@ -77,17 +78,29 @@ struct Snapshot {
 }
 
 #[tauri::command]
-fn test_login_ready(launcher: State<'_, Launcher>) -> Result<(), String> {
+fn test_login_ready(
+    launcher: State<'_, Launcher>,
+    cancelled: Option<bool>,
+) -> Result<bool, String> {
     let path = launcher
         .login_receipt
         .as_ref()
         .ok_or("Login verification is disabled")?;
+    let cancelled_path = if cancelled.unwrap_or(false) {
+        if !launcher.verify_oauth {
+            return Err("OAuth verification is disabled".into());
+        }
+        Some(path.with_file_name("oauth-cancelled"))
+    } else {
+        None
+    };
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(path)
+        .open(cancelled_path.as_ref().unwrap_or(path))
         .and_then(|mut receipt| receipt.write_all(b"ready\n"))
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok(launcher.verify_oauth)
 }
 
 #[tauri::command]
@@ -430,11 +443,14 @@ fn main() {
         .manage(updater::Updates::default())
         .setup(|app| {
             let test_profile = test_profile()?;
+            let login_mode = std::env::var_os("ALICE_TAURI_VERIFY_LOGIN");
             let login_receipt = test_profile
                 .as_ref()
-                .filter(|_| std::env::var_os("ALICE_TAURI_VERIFY_LOGIN").is_some())
+                .filter(|_| login_mode.is_some())
                 .map(|profile| profile.join("login-ready"));
             let verify_login = login_receipt.is_some();
+            let verify_oauth =
+                verify_login && login_mode.as_deref() == Some(std::ffi::OsStr::new("oauth"));
             let (profile, data_root) = match test_profile {
                 Some(path) => (path.clone(), path),
                 None => (app.path().app_data_dir()?, app.path().data_dir()?),
@@ -448,6 +464,7 @@ fn main() {
                 preferences_path,
                 preferences: Mutex::new(preferences),
                 login_receipt,
+                verify_oauth,
             });
             let mut window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;

@@ -17,6 +17,10 @@ on:
         description: Prepare live NeoForge and Fabric game files without starting Minecraft
         type: boolean
         default: false
+      oauth:
+        description: Open and cancel the real Microsoft sign-in window
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,21 +63,25 @@ jobs:
         run: npm run tauri -- build --ci --no-bundle -- --locked
       - name: Verify the Windows login screen
         if: runner.os == 'Windows'
+        env:
+          VERIFY_OAUTH: ${{ inputs.oauth || contains(github.event.head_commit.message, '[oauth]') }}
         run: |
           $profile = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP "alice-startup-$([guid]::NewGuid())")
           $env:ALICE_TAURI_TEST_PROFILE = $profile.FullName
-          $env:ALICE_TAURI_VERIFY_LOGIN = '1'
+          $verifyOAuth = $env:VERIFY_OAUTH -eq 'true'
+          $env:ALICE_TAURI_VERIFY_LOGIN = if ($verifyOAuth) { 'oauth' } else { '1' }
           $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $profile.FullName 'webview'
           $launcher = Start-Process -FilePath 'src-tauri/target/release/alice-gameland.exe' -WindowStyle Hidden -PassThru
           try {
-            $receipt = Join-Path $profile.FullName 'login-ready'
-            for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $receiptName = if ($verifyOAuth) { 'oauth-cancelled' } else { 'login-ready' }
+            $receipt = Join-Path $profile.FullName $receiptName
+            for ($attempt = 0; $attempt -lt 100; $attempt++) {
               if (Test-Path -LiteralPath $receipt) { break }
               if ($launcher.HasExited) { throw "Launcher exited with code $($launcher.ExitCode)" }
               Start-Sleep -Milliseconds 500
             }
-            if (!(Test-Path -LiteralPath $receipt)) { throw 'Launcher did not render the login screen' }
-            Write-Output 'Windows login screen rendered'
+            if (!(Test-Path -LiteralPath $receipt)) { throw "Launcher did not report $receiptName" }
+            Write-Output "Windows launcher reported $receiptName"
           } finally {
             if (!$launcher.HasExited) { Stop-Process -Id $launcher.Id }
           }
@@ -126,6 +134,8 @@ jobs:
         run: npm run tauri -- build --ci -- --locked
       - if: runner.os == 'macOS'
         shell: bash
+        env:
+          VERIFY_OAUTH: ${{ inputs.oauth || contains(github.event.head_commit.message, '[oauth]') }}
         run: |
           profile=$(mktemp -d "$RUNNER_TEMP/alice-startup.XXXXXX")
           mount="$profile/mount"
@@ -140,18 +150,24 @@ jobs:
           test "$(lipo -archs "$launcher")" = arm64
           node scripts/test-tauri-update.mjs "$app"
           printf '%s\n' '{"settings":{"game":{"fullscreen":true}},"authenticationDatabase":{"fixture":true}}' > "$profile/앨리스의 게임랜드/config.json"
-          ALICE_TAURI_TEST_PROFILE="$profile" ALICE_TAURI_VERIFY_LOGIN=1 "$launcher" > "$profile/startup.log" 2>&1 &
+          login_mode=1
+          receipt=login-ready
+          if [ "$VERIFY_OAUTH" = true ]; then
+            login_mode=oauth
+            receipt=oauth-cancelled
+          fi
+          ALICE_TAURI_TEST_PROFILE="$profile" ALICE_TAURI_VERIFY_LOGIN="$login_mode" "$launcher" > "$profile/startup.log" 2>&1 &
           pid=$!
-          for attempt in {1..40}; do
-            test -s "$profile/login-ready" && break
+          for attempt in {1..100}; do
+            test -s "$profile/$receipt" && break
             kill -0 "$pid" 2>/dev/null || { cat "$profile/startup.log"; exit 1; }
             sleep 0.5
           done
-          test -s "$profile/login-ready" || { cat "$profile/startup.log"; exit 1; }
+          test -s "$profile/$receipt" || { cat "$profile/startup.log"; exit 1; }
           sleep 2
           kill -0 "$pid" 2>/dev/null || { cat "$profile/startup.log"; exit 1; }
           node -e 'const assert = require("node:assert/strict"); const data = require(process.argv[1]); assert.equal(data.settings.game.fullscreen, true); assert.equal(data.authenticationDatabase, undefined)' "$profile/preferences.json"
-          echo "Packaged launcher rendered the login screen on $(uname -m) and imported legacy preferences"
+          echo "Packaged launcher reported $receipt on $(uname -m) and imported legacy preferences"
       - uses: actions/upload-artifact@v6
         with:
           name: tauri-${{ matrix.platform }}

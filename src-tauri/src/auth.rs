@@ -149,7 +149,7 @@ async fn authorize(app: &AppHandle, client_id: &str) -> Result<(String, String)>
     let callback = Arc::new(Mutex::new(Some(sender)));
     let navigation = Arc::clone(&callback);
     // This remote window has no launcher capability or access to account storage.
-    let window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::External(url))
+    let mut window = WebviewWindowBuilder::new(app, WINDOW_LABEL, WebviewUrl::External(url))
         .title("Microsoft 로그인")
         .inner_size(520.0, 600.0)
         .incognito(true)
@@ -159,7 +159,23 @@ async fn authorize(app: &AppHandle, client_id: &str) -> Result<(String, String)>
                 return false;
             }
             url.scheme() == "https"
-        })
+        });
+    let test_page_loaded = if app.state::<crate::Launcher>().verify_oauth {
+        let loaded = Arc::new(tokio::sync::Notify::new());
+        let page = Arc::clone(&loaded);
+        window = window.on_page_load(move |_, event| {
+            if event.event() == tauri::webview::PageLoadEvent::Finished
+                && event.url().scheme() == "https"
+                && event.url().host_str() == Some("login.live.com")
+            {
+                page.notify_one();
+            }
+        });
+        Some(loaded)
+    } else {
+        None
+    };
+    let window = window
         .build()
         .map_err(|_| "Microsoft 로그인 창을 열지 못했어요.")?;
     window.on_window_event(move |event| {
@@ -167,6 +183,11 @@ async fn authorize(app: &AppHandle, client_id: &str) -> Result<(String, String)>
             send_once(&callback, Err("Microsoft 로그인 창이 닫혔어요.".into()));
         }
     });
+    if let Some(loaded) = test_page_loaded {
+        let result = tokio::time::timeout(Duration::from_secs(30), loaded.notified()).await;
+        let _ = window.destroy();
+        result.map_err(|_| "Microsoft 로그인 페이지를 확인하지 못했어요.")?;
+    }
     let response = tokio::time::timeout(Duration::from_secs(600), receiver).await;
     if app.get_webview_window(WINDOW_LABEL).is_some() {
         let _ = window.destroy();
