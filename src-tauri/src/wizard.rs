@@ -253,6 +253,7 @@ struct Info {
     defaults: Option<Defaults>,
     update_target: Option<UpdateTarget>,
     verify_removal_window: Option<String>,
+    verify_electron_transition: bool,
 }
 
 #[tauri::command]
@@ -282,6 +283,13 @@ fn wizard_info(app: tauri::AppHandle, state: State<'_, Wizard>) -> Result<Info, 
         defaults,
         update_target: state.update_target.clone(),
         verify_removal_window: verified,
+        verify_electron_transition: env::var_os("ALICE_TAURI_VERIFY_ELECTRON_TRANSITION").is_some()
+            && state.update_target.as_ref().is_some_and(|target| {
+                target.mode == Scope::User
+                    && crate::test_profile().ok().flatten().as_deref()
+                        == target.destination.parent()
+                    && target.destination.join(ELECTRON_EXE).is_file()
+            }),
     })
 }
 

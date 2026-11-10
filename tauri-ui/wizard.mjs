@@ -17,6 +17,13 @@ if (frame.label === 'setup-wizard') {
         progress: callback => { onProgress = callback }
     }
     await import('./setup.mjs')
+    const info = await core.invoke('wizard_info')
+    if (info.verifyElectronTransition) {
+        const button = document.getElementById('install')
+        await button.onclick()
+        if (!document.getElementById('complete').hidden) await frame.close()
+        else throw new Error(document.getElementById('error').textContent)
+    }
 } else {
     const info = await core.invoke('wizard_info')
     document.getElementById('version').textContent = 'v' + info.version

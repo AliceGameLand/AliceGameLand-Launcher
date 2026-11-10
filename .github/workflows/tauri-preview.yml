@@ -121,8 +121,10 @@ jobs:
           $settings = Join-Path $config.FullName 'config.json'
           Set-Content -LiteralPath $settings -Value '{}'
           $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
-          node scripts/test-electron-transition.mjs $setup.FullName $target
-          if ($LASTEXITCODE) { throw 'Electron transition failed' }
+          $env:ALICE_TAURI_TEST_PROFILE = $fixture.FullName
+          $env:ALICE_TAURI_VERIFY_ELECTRON_TRANSITION = '1'
+          $installer = Start-Process -FilePath $setup.FullName -ArgumentList '--updated','--force-run' -PassThru
+          if (!$installer.WaitForExit(60000) -or $installer.ExitCode -ne 0) { throw 'Electron transition failed' }
           if (!(Test-Path -LiteralPath (Join-Path $target 'AliceGameLand-Tauri.exe')) -or
               (Test-Path -LiteralPath (Join-Path $target '앨리스의 게임랜드.exe')) -or
               (Test-Path -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\3d6e8bdf-a47b-5327-b17b-ac5678029a9c') -or
