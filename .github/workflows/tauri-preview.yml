@@ -101,6 +101,33 @@ jobs:
           $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
           ./scripts/test-tauri-setup.ps1 -Installer $setup.FullName
           node scripts/test-tauri-update.mjs $setup.FullName
+      - name: Verify the previous Windows executable is replaced
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $fixture = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'launcher executable rename')
+          gh release download v1.0.48 -R AliceGameLand/AliceGameLand-Launcher --pattern 'alice-gameland-setup-1.0.48.exe' --dir $fixture.FullName
+          if ($LASTEXITCODE) { throw 'Could not fetch the previous launcher' }
+          $target = Join-Path $fixture.FullName 'alice-gameland-launcher'
+          $old = Start-Process -FilePath (Join-Path $fixture.FullName 'alice-gameland-setup-1.0.48.exe') -ArgumentList "/S /currentuser /D=$target" -Wait -PassThru
+          if ($old.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $target 'AliceGameLand-Tauri.exe'))) {
+            throw 'Previous launcher did not install'
+          }
+          $setup = Get-ChildItem -LiteralPath dist/tauri-setup -Filter '*-setup.exe'
+          $env:ALICE_TAURI_TEST_PROFILE = $fixture.FullName
+          $env:ALICE_TAURI_VERIFY_ELECTRON_TRANSITION = '1'
+          $updated = Start-Process -FilePath $setup.FullName -ArgumentList '--updated','--force-run' -PassThru
+          if (!$updated.WaitForExit(60000)) { throw 'Upgrade wizard timed out' }
+          if ($updated.ExitCode -ne 0 -or !(Test-Path -LiteralPath (Join-Path $target 'AliceGameLand.exe')) -or
+              (Test-Path -LiteralPath (Join-Path $target 'AliceGameLand-Tauri.exe'))) {
+            throw 'Upgrade did not replace the previous executable'
+          }
+          Remove-Item Env:ALICE_TAURI_TEST_PROFILE, Env:ALICE_TAURI_VERIFY_ELECTRON_TRANSITION
+          $worker = Join-Path $fixture.FullName 'remove-worker.exe'
+          Copy-Item -LiteralPath (Join-Path $target 'Uninstall AliceGameLand.exe') -Destination $worker
+          $removed = Start-Process -FilePath $worker -ArgumentList "/S /currentuser _?=$target" -Wait -PassThru
+          if ($removed.ExitCode -ne 0) { throw 'Upgrade fixture cleanup failed' }
       - name: Verify Electron upgrades to Tauri in the same folder
         if: runner.os == 'Windows'
         env:

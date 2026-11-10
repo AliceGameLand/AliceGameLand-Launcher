@@ -289,7 +289,9 @@ fn wizard_info(app: tauri::AppHandle, state: State<'_, Wizard>) -> Result<Info, 
                 target.mode == Scope::User
                     && crate::test_profile().ok().flatten().as_deref()
                         == target.destination.parent()
-                    && target.destination.join(ELECTRON_EXE).is_file()
+                    && [ELECTRON_EXE, OLD_LAUNCHER]
+                        .into_iter()
+                        .any(|name| target.destination.join(name).is_file())
             }),
     })
 }
