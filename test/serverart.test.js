@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { DEFAULT_BACKGROUND, getServerBackground } = require('../app/assets/js/serverart')
 
-test('Alice minigames and unknown servers retain the original garden', () => {
+test('Alice minigames and unknown servers use the main garden', () => {
     for(const id of ['AliceGameLand-26.2', 'new-server', null, undefined, 'toString', '__proto__']){
         assert.equal(getServerBackground(id), DEFAULT_BACKGROUND)
     }

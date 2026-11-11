@@ -1,4 +1,4 @@
-const DEFAULT_BACKGROUND = 'assets/images/backgrounds/0.jpg'
+const DEFAULT_BACKGROUND = 'assets/images/backgrounds/alice-garden-handdrawn.png'
 const backgrounds = Object.freeze({
     'AliceDiamond-26.2': 'diamond',
     'AliceVrMinigames-26.2': 'minigames',
@@ -7,7 +7,7 @@ const backgrounds = Object.freeze({
     'AliceCrimeScene-26.2': 'crime-scene'
 })
 
-// Unknown servers keep the original garden until their artwork is available.
+// Servers without dedicated artwork share the main garden background.
 function getServerBackground(serverId){
     const name = backgrounds[serverId]
     return typeof name === 'string' && Object.hasOwn(backgrounds, serverId)
