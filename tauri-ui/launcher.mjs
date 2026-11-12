@@ -8,7 +8,7 @@ import { createJavaSettings } from './java-settings.mjs'
 const byId = id => document.getElementById(id)
 const { core, window: windowApi } = window.__TAURI__
 const frame = windowApi.getCurrentWindow()
-const startupLoading = new Promise(resolve => window.setTimeout(resolve, 2500))
+const startupLoading = new Promise(resolve => window.setTimeout(resolve, 2200))
 uiClick.bindUiClickSound(document, window)
 const transitionArtwork = artworkTransition.createArtworkTransition(document.querySelector('.home-art'))
 const loginButton = byId('loginOptionMicrosoft')
