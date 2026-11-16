@@ -118,16 +118,22 @@ fn test_login_ready(
 }
 
 #[tauri::command]
-async fn launcher_snapshot(app: AppHandle, launcher: State<'_, Launcher>) -> Result<Snapshot, String> {
+async fn launcher_snapshot(
+    app: AppHandle,
+    launcher: State<'_, Launcher>,
+    refresh_visibility: Option<bool>,
+) -> Result<Snapshot, String> {
     let profile = auth::account_profile(app.clone())
         .await?
         .ok_or("Microsoft 계정에 로그인해 주세요.")?;
     let mut visibility = launcher.server_visibility.lock().await;
-    let cache = launcher.preferences_path.with_file_name("server-visibility.json");
-    let previous = visibility.clone();
-    *visibility = tauri::async_runtime::spawn_blocking(move || Policy::refresh(&cache, previous))
-        .await
-        .map_err(|_| "서버 표시 설정을 불러오지 못했어요.")?;
+    if refresh_visibility.unwrap_or(true) {
+        let cache = launcher.preferences_path.with_file_name("server-visibility.json");
+        let previous = visibility.clone();
+        *visibility = tauri::async_runtime::spawn_blocking(move || Policy::refresh(&cache, previous))
+            .await
+            .map_err(|_| "서버 표시 설정을 불러오지 못했어요.")?;
+    }
     let servers: Vec<Server> = visibility
         .as_ref()
         .map(|policy| {

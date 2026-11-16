@@ -339,8 +339,10 @@ async fn fetch_avatar(id: &str) -> Result<String> {
 }
 
 #[tauri::command]
-pub async fn account_avatar(app: AppHandle) -> Result<String> {
-    let profile = account_profile(app).await?.ok_or("로그인된 계정이 없어요.")?;
+pub async fn account_avatar(app: AppHandle, account_id: String) -> Result<String> {
+    let profile = with_store(&app, move |store| store.account(&account_id))
+        .await?
+        .profile;
     if let Some(texture) = profile
         .skins
         .iter()

@@ -138,17 +138,20 @@ impl AccountStore {
             .map_err(|_| "계정 목록을 저장하지 못했어요.".into())
     }
 
-    fn index(&self) -> Result<AccountIndex> {
-        let path = self.profile.join("accounts.json");
-        match File::open(path) {
-            Ok(file) => {
-                return serde_json::from_reader(file)
-                    .map_err(|_| "계정 목록을 읽지 못했어요.".into())
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(_) => return Err("계정 목록을 읽지 못했어요.".into()),
+    fn stored_index(&self) -> Result<Option<AccountIndex>> {
+        match File::open(self.profile.join("accounts.json")) {
+            Ok(file) => serde_json::from_reader(file)
+                .map(Some)
+                .map_err(|_| "계정 목록을 읽지 못했어요.".into()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(_) => Err("계정 목록을 읽지 못했어요.".into()),
         }
+    }
 
+    fn index(&self) -> Result<AccountIndex> {
+        if let Some(index) = self.stored_index()? {
+            return Ok(index);
+        }
         let mut index = AccountIndex::default();
         let previous = self.read_credential(None)?;
         let from_tauri = previous.is_some();
@@ -197,15 +200,23 @@ impl AccountStore {
         Ok(account.profile)
     }
 
+    fn read_member(&self, index: &AccountIndex, id: &str) -> Result<SavedAccount> {
+        if !index.has(id) {
+            return Err("저장된 계정을 찾지 못했어요.".into());
+        }
+        self.read_credential(Some(id))?
+            .ok_or_else(|| "이 계정으로 다시 로그인해 주세요.".into())
+    }
+
+    pub(super) fn account(&self, id: &str) -> Result<SavedAccount> {
+        let index = self.stored_index()?.ok_or("저장된 계정을 찾지 못했어요.")?;
+        self.read_member(&index, &compact_uuid(id)?)
+    }
+
     pub(super) fn select(&self, id: &str) -> Result<Profile> {
         let mut index = self.index()?;
         let id = compact_uuid(id)?;
-        if !index.has(&id) {
-            return Err("저장된 계정을 찾지 못했어요.".into());
-        }
-        let account = self
-            .read_credential(Some(&id))?
-            .ok_or("이 계정으로 다시 로그인해 주세요.")?;
+        let account = self.read_member(&index, &id)?;
         index.selected = Some(id);
         self.save_index(&index)?;
         Ok(account.profile)
@@ -350,6 +361,7 @@ mod tests {
         store.save(account(second, "Updated")).unwrap();
 
         assert_eq!(store.list().unwrap().len(), 2);
+        assert_eq!(store.account(first).unwrap().profile.name, "First");
         assert_eq!(store.selected().unwrap().unwrap().profile.name, "Updated");
         assert_eq!(store.select(first).unwrap().name, "First");
         assert_eq!(
@@ -358,6 +370,7 @@ mod tests {
         );
         assert_eq!(store.remove(second).unwrap().unwrap().id, first);
         assert!(store.read_credential(Some(second)).unwrap().is_none());
+        assert!(store.account(second).is_err());
         assert!(store.remove(first).unwrap().is_none());
         assert!(store.selected().unwrap().is_none());
         assert!(store.list().unwrap().is_empty());

@@ -23,7 +23,7 @@ let availableServers = []
 let activeServer
 let activeProfile
 let accountActionInProgress = false
-let avatarUrl
+const avatarRequests = new Map()
 let visibleView
 let viewFade
 let viewRevision = 0
@@ -183,10 +183,10 @@ function clearServerChoices() {
     setupList.replaceChildren()
 }
 
-async function showAuthenticated(profile, returnToSettings = false) {
+async function showAuthenticated(profile, { returnToSettings = false, refreshVisibility = true } = {}) {
     clearServerChoices()
     if (activeProfile !== profile) setActiveProfile(profile)
-    const snapshot = await core.invoke('launcher_snapshot').catch(() => null)
+    const snapshot = await core.invoke('launcher_snapshot', { refreshVisibility }).catch(() => null)
     if (snapshot && !homeInitialized) {
         initializeHome(snapshot)
         homeInitialized = true
@@ -212,7 +212,7 @@ async function showAuthenticated(profile, returnToSettings = false) {
     if (!initial) await showSavedProfileChoices()
     if (remembered && returnToSettings) {
         await showSettingsAccount()
-        await showView('settingsContainer')
+        if (visibleView !== 'settingsContainer') await showView('settingsContainer')
         return
     }
     await showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
@@ -225,12 +225,18 @@ async function accountAction(button, command, args, failureTitle) {
     if (accountActionInProgress) return
     accountActionInProgress = true
     const previousView = visibleView
+    const signingIn = command === 'microsoft_sign_in'
     button.disabled = true
     try {
-        await showView('waitingContainer')
+        if (signingIn) await showView('waitingContainer')
         const profile = await core.invoke(command, args)
+        if (signingIn && profile) avatarRequests.delete(profile.id)
+        if (command === 'microsoft_sign_out') avatarRequests.delete(args.accountId)
         if (profile) {
-            await showAuthenticated(profile, previousView === 'settingsContainer')
+            await showAuthenticated(profile, {
+                returnToSettings: previousView === 'settingsContainer',
+                refreshVisibility: signingIn
+            })
         } else {
             setActiveProfile(null)
             clearServerChoices()
@@ -238,7 +244,7 @@ async function accountAction(button, command, args, failureTitle) {
             loginButton.focus()
         }
     } catch (error) {
-        await showView(previousView ?? 'loginOptionsContainer')
+        if (visibleView !== previousView) await showView(previousView ?? 'loginOptionsContainer')
         showError(failureTitle, error, button)
     } finally {
         accountActionInProgress = false
@@ -567,32 +573,33 @@ function bindAbout(version) {
     })
 }
 
-function accountImage(size, url = avatarUrl) {
+function accountImage(profile, size) {
     const image = document.createElement('img')
     image.alt = ''
     image.width = size
     image.height = size
     const fallback = 'assets/images/icons/profile.svg'
-    image.src = url ?? fallback
+    image.src = fallback
     image.addEventListener('error', () => { image.src = fallback }, { once: true })
+
+    let request = avatarRequests.get(profile.id)
+    if (!request) {
+        request = core.invoke('account_avatar', { accountId: profile.id })
+        avatarRequests.set(profile.id, request)
+    }
+    void request.then(url => {
+        image.src = url
+    }, () => {
+        if (avatarRequests.get(profile.id) === request) avatarRequests.delete(profile.id)
+    })
     return image
 }
 
 function setActiveProfile(profile) {
     activeProfile = profile
-    avatarUrl = null
     byId('user_text').textContent = profile?.name ?? ''
-    const avatar = byId('avatarContainer')
-    avatar.replaceChildren(...(profile ? [accountImage(22)] : []))
-    if (profile) void core.invoke('account_avatar').then(url => {
-        if (activeProfile !== profile) return
-        avatarUrl = url
-        avatar.querySelector('img').src = url
-        const settingsImage = byId('settingsCurrentMicrosoftAccounts').querySelector('[data-profile-id="' + profile.id + '"]')
-        if (settingsImage?.dataset.profileId === profile.id) settingsImage.src = url
-    }).catch(() => {})
+    byId('avatarContainer').replaceChildren(...(profile ? [accountImage(profile, 22)] : []))
 }
-
 
 async function storedProfiles() {
     try {
@@ -631,9 +638,8 @@ function settingsAccountRow(profile) {
     row.className = 'settingsAuthAccount'
     const portrait = document.createElement('div')
     portrait.className = 'settingsAuthAccountLeft'
-    const image = accountImage(48, current ? avatarUrl : null)
+    const image = accountImage(profile, 48)
     image.className = 'settingsAuthAccountImage'
-    image.dataset.profileId = profile.id
     portrait.append(image)
     const body = document.createElement('div')
     body.className = 'settingsAuthAccountRight'
@@ -868,6 +874,7 @@ function initializeHome(snapshot) {
         if (prereleaseChanged) void refreshUpdates?.()
     }
     settingsDone.addEventListener('click', async () => {
+        if (accountActionInProgress) return
         settingsDone.disabled = true
         try {
             await saveSettings()
@@ -881,6 +888,7 @@ function initializeHome(snapshot) {
     })
     for (const button of document.querySelectorAll('.settingsSwitchServerButton')) {
         button.addEventListener('click', () => {
+            if (accountActionInProgress || !activeServer) return
             const tab = button.closest('.settingsTab').id
             pickServer(availableServers, button, async server => {
                 await saveSettings()
@@ -935,7 +943,6 @@ retryVisibility.addEventListener('click', async () => {
     retryVisibility.disabled = true
     changeServerAccount.disabled = true
     try {
-        await showView('waitingContainer')
         await showAuthenticated(activeProfile)
     } finally {
         accountActionInProgress = false
