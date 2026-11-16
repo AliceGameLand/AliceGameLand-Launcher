@@ -1,8 +1,6 @@
 /* global document, window */
-import serverArt from './assets/js/serverart.js.mjs'
 import serverIcon from './assets/js/servericon.js.mjs'
 import uiClick from './assets/js/uiclick.js.mjs'
-import artworkTransition from './assets/js/artworktransition.js.mjs'
 import { createJavaSettings } from './java-settings.mjs'
 
 const byId = id => document.getElementById(id)
@@ -10,18 +8,21 @@ const { core, window: windowApi } = window.__TAURI__
 const frame = windowApi.getCurrentWindow()
 const startupLoading = new Promise(resolve => window.setTimeout(resolve, 2200))
 uiClick.bindUiClickSound(document, window)
-const transitionArtwork = artworkTransition.createArtworkTransition(document.querySelector('.home-art'))
 const loginButton = byId('loginOptionMicrosoft')
 const homeList = byId('homeServerList')
 const setupList = byId('firstServerList')
+const retryVisibility = byId('retryServerVisibility')
+const changeServerAccount = byId('changeServerAccount')
 const overlay = byId('overlayContainer')
 const acknowledge = byId('overlayAcknowledge')
 const playButton = byId('launch_button')
 const launchDetails = byId('launch_details')
 const homeStatus = byId('homeServerStatus')
 let needsServerSelection
+let availableServers = []
 let activeServer
 let activeProfile
+let accountActionInProgress = false
 let avatarUrl
 let visibleView
 let viewFade
@@ -151,7 +152,6 @@ function setActiveServer(server) {
     const meta = byId('homeServerMeta')
     meta.textContent = 'Minecraft ' + server.minecraftVersion
     meta.hidden = false
-    void transitionArtwork(serverArt.getServerBackground(server.id))
     for (const button of homeList.children) {
         button.setAttribute('aria-pressed', String(button.dataset.serverId === server.id))
     }
@@ -172,20 +172,85 @@ async function refreshServerStatus() {
 
 window.setInterval(refreshServerStatus, 5 * 60 * 1000)
 
-async function showAuthenticated(profile) {
-    if (!homeInitialized) {
-        try {
-            await initializeHome()
-            homeInitialized = true
-        } catch (error) {
+function clearServerChoices() {
+    availableServers = []
+    activeServer = undefined
+    needsServerSelection = true
+    statusRequest++
+    homeStatus.hidden = true
+    playButton.disabled = true
+    homeList.replaceChildren()
+    setupList.replaceChildren()
+}
+
+async function showAuthenticated(profile, returnToSettings = false) {
+    clearServerChoices()
+    if (activeProfile !== profile) setActiveProfile(profile)
+    const snapshot = await core.invoke('launcher_snapshot').catch(() => null)
+    if (snapshot && !homeInitialized) {
+        initializeHome(snapshot)
+        homeInitialized = true
+    }
+
+    availableServers = snapshot?.servers ?? []
+    const remembered = availableServers.find(server => server.id === snapshot?.selectedServer)
+    const initial = remembered ?? availableServers.find(server => server.mainServer) ?? availableServers[0]
+    const unavailable = !snapshot || snapshot.visibilityUnavailable
+    needsServerSelection = !remembered
+    byId('firstServerTitle').hidden = byId('firstServerDescription').hidden = !initial
+    byId('firstServerAccessEmpty').hidden = Boolean(initial) || unavailable
+    byId('firstServerVisibilityFailed').hidden = !unavailable
+    byId('firstServerAccessActions').hidden = Boolean(initial)
+    retryVisibility.hidden = !unavailable
+    if (initial) {
+        homeList.replaceChildren(...availableServers.map(server => makeChoice(server)))
+        setupList.replaceChildren(...availableServers.map(server => makeChoice(server, true)))
+        setActiveServer(initial)
+        playButton.disabled = needsServerSelection
+    }
+
+    if (!initial) await showSavedProfileChoices()
+    if (remembered && returnToSettings) {
+        await showSettingsAccount()
+        await showView('settingsContainer')
+        return
+    }
+    await showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
+    if (needsServerSelection) {
+        (setupList.firstElementChild ?? (unavailable ? retryVisibility : changeServerAccount)).focus()
+    }
+}
+
+async function accountAction(button, command, args, failureTitle) {
+    if (accountActionInProgress) return
+    accountActionInProgress = true
+    const previousView = visibleView
+    button.disabled = true
+    try {
+        await showView('waitingContainer')
+        const profile = await core.invoke(command, args)
+        if (profile) {
+            await showAuthenticated(profile, previousView === 'settingsContainer')
+        } else {
+            setActiveProfile(null)
+            clearServerChoices()
             await showView('loginOptionsContainer')
-            showError('런처 정보를 불러오지 못했어요', error, loginButton)
-            return
+            loginButton.focus()
+        }
+    } catch (error) {
+        await showView(previousView ?? 'loginOptionsContainer')
+        showError(failureTitle, error, button)
+    } finally {
+        accountActionInProgress = false
+        button.disabled = false
+        if (visibleView === 'settingsContainer') {
+            (button.isConnected ? button : byId('settingsAddMicrosoftAccount')).focus()
         }
     }
-    setActiveProfile(profile)
-    await showView(needsServerSelection ? 'serverSetupContainer' : 'landingContainer')
-    if (needsServerSelection) setupList.firstElementChild?.focus()
+}
+
+function signIn(button) {
+    return accountAction(button, 'microsoft_sign_in', {}, 'Microsoft 로그인')
 }
 
 function selectSettingsTab(id, fade = false) {
@@ -502,13 +567,13 @@ function bindAbout(version) {
     })
 }
 
-function accountImage(size) {
+function accountImage(size, url = avatarUrl) {
     const image = document.createElement('img')
     image.alt = ''
     image.width = size
     image.height = size
     const fallback = 'assets/images/icons/profile.svg'
-    image.src = avatarUrl ?? fallback
+    image.src = url ?? fallback
     image.addEventListener('error', () => { image.src = fallback }, { once: true })
     return image
 }
@@ -523,20 +588,52 @@ function setActiveProfile(profile) {
         if (activeProfile !== profile) return
         avatarUrl = url
         avatar.querySelector('img').src = url
-        const settingsImage = byId('settingsCurrentMicrosoftAccounts').querySelector('.settingsAuthAccountImage')
+        const settingsImage = byId('settingsCurrentMicrosoftAccounts').querySelector('[data-profile-id="' + profile.id + '"]')
         if (settingsImage?.dataset.profileId === profile.id) settingsImage.src = url
     }).catch(() => {})
 }
 
-function showSettingsAccount() {
-    const container = byId('settingsCurrentMicrosoftAccounts')
+
+async function storedProfiles() {
+    try {
+        return await core.invoke('list_accounts')
+    } catch {
+        return activeProfile ? [activeProfile] : []
+    }
+}
+
+function selectSavedAccount(profile, button) {
+    return accountAction(button, 'select_account', { accountId: profile.id }, '계정을 바꾸지 못했어요')
+}
+
+async function showSavedProfileChoices() {
+    const list = byId('firstSavedServerAccounts')
+    const accounts = (await storedProfiles()).filter(account => account.id !== activeProfile?.id)
+    list.replaceChildren(...accounts.map(profile => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'quiet-button'
+        button.textContent = profile.name + ' 계정 사용'
+        button.addEventListener('click', () => selectSavedAccount(profile, button))
+        return button
+    }))
+    list.hidden = accounts.length === 0
+}
+
+async function showSettingsAccount() {
+    const profiles = await storedProfiles()
+    byId('settingsCurrentMicrosoftAccounts').replaceChildren(...profiles.map(settingsAccountRow))
+}
+
+function settingsAccountRow(profile) {
+    const current = profile.id === activeProfile.id
     const row = document.createElement('div')
     row.className = 'settingsAuthAccount'
     const portrait = document.createElement('div')
     portrait.className = 'settingsAuthAccountLeft'
-    const image = accountImage(48)
+    const image = accountImage(48, current ? avatarUrl : null)
     image.className = 'settingsAuthAccountImage'
-    image.dataset.profileId = activeProfile.id
+    image.dataset.profileId = profile.id
     portrait.append(image)
     const body = document.createElement('div')
     body.className = 'settingsAuthAccountRight'
@@ -544,26 +641,7 @@ function showSettingsAccount() {
     details.className = 'settingsAuthAccountDetails'
     const name = document.createElement('span')
     name.className = 'settingsAuthAccountDetailValue'
-    name.textContent = activeProfile.name
-    const actions = document.createElement('div')
-    actions.className = 'settingsAuthAccountActions'
-    const signOut = document.createElement('button')
-    signOut.type = 'button'
-    signOut.className = 'settingsAuthAccountLogOut'
-    signOut.textContent = '로그아웃'
-    signOut.addEventListener('click', async () => {
-        signOut.disabled = true
-        try {
-            await core.invoke('microsoft_sign_out')
-            setActiveProfile(null)
-            await showView('loginOptionsContainer')
-            loginButton.focus()
-        } catch (error) {
-            showError('로그아웃하지 못했어요', error, signOut)
-        } finally {
-            signOut.disabled = false
-        }
-    })
+    name.textContent = profile.name
     const identity = document.createElement('div')
     identity.className = 'settingsAuthAccountDetailPane'
     identity.append(name)
@@ -573,19 +651,33 @@ function showSettingsAccount() {
     summary.textContent = 'UUID'
     const id = document.createElement('div')
     id.className = 'settingsAuthAccountDetailValue'
-    id.textContent = activeProfile.id
+    id.textContent = profile.id
     uuid.append(summary, id)
     details.append(identity, uuid)
-    const selected = document.createElement('button')
-    selected.type = 'button'
-    selected.className = 'settingsAuthAccountSelect'
-    selected.disabled = true
-    selected.setAttribute('selected', '')
-    selected.textContent = '선택된 계정 ✓'
-    actions.append(selected, signOut)
+
+    const actions = document.createElement('div')
+    actions.className = 'settingsAuthAccountActions'
+    const select = document.createElement('button')
+    select.type = 'button'
+    select.className = 'settingsAuthAccountSelect'
+    select.disabled = current
+    select.toggleAttribute('selected', current)
+    select.textContent = current ? '선택된 계정 ✓' : '선택'
+    select.setAttribute('aria-label', profile.name + ' ' + select.textContent)
+    select.addEventListener('click', () => selectSavedAccount(profile, select))
+
+    const signOut = document.createElement('button')
+    signOut.type = 'button'
+    signOut.className = 'settingsAuthAccountLogOut'
+    signOut.textContent = '로그아웃'
+    signOut.setAttribute('aria-label', profile.name + ' 로그아웃')
+    signOut.addEventListener('click', () => accountAction(
+        signOut, 'microsoft_sign_out', { accountId: profile.id }, '로그아웃하지 못했어요'
+    ))
+    actions.append(select, signOut)
     body.append(details, actions)
     row.append(portrait, body)
-    container.replaceChildren(row)
+    return row
 }
 
 async function openSettings(id, source, refresh = false) {
@@ -608,7 +700,7 @@ async function openSettings(id, source, refresh = false) {
         gameDirectory.value = saved.launcher.dataDirectory ?? ''
         allowPrerelease.defaultChecked = saved.launcher.allowPrerelease ?? false
         allowPrerelease.checked = allowPrerelease.hasAttribute('data-required') || allowPrerelease.defaultChecked
-        showSettingsAccount()
+        await showSettingsAccount()
         selectSettingsTab(id)
         if (!refresh) {
             await showView('settingsContainer')
@@ -710,6 +802,7 @@ function makeChoice(server, firstChoice = false) {
             setActiveServer(server)
             if (firstChoice) {
                 needsServerSelection = false
+                playButton.disabled = false
                 await showView('landingContainer')
                 homeList.querySelector('[aria-pressed="true"]')?.focus()
             }
@@ -722,15 +815,7 @@ function makeChoice(server, firstChoice = false) {
     return item
 }
 
-async function initializeHome() {
-    const snapshot = await core.invoke('launcher_snapshot')
-    const remembered = snapshot.servers.find(server => server.id === snapshot.selectedServer)
-    const initial = remembered ?? snapshot.servers.find(server => server.mainServer) ?? snapshot.servers[0]
-    if (!initial) throw new Error('Empty server distribution')
-    needsServerSelection = !remembered
-    homeList.replaceChildren(...snapshot.servers.map(server => makeChoice(server)))
-    setupList.replaceChildren(...snapshot.servers.map(server => makeChoice(server, true)))
-    setActiveServer(initial)
+function initializeHome(snapshot) {
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
     bindAbout(snapshot.version)
     const refreshUpdates = bindUpdates(snapshot)
@@ -768,19 +853,7 @@ async function initializeHome() {
         }
     })
     const changeAccount = byId('settingsAddMicrosoftAccount')
-    changeAccount.textContent = '다른 계정으로 로그인'
-    changeAccount.addEventListener('click', async event => {
-        const button = event.currentTarget
-        button.disabled = true
-        try {
-            setActiveProfile(await core.invoke('microsoft_sign_in'))
-            showSettingsAccount()
-        } catch (error) {
-            showError('Microsoft 로그인', error, button)
-        } finally {
-            button.disabled = false
-        }
-    })
+    changeAccount.addEventListener('click', () => signIn(changeAccount))
     async function saveSettings() {
         const settings = Object.fromEntries(Object.entries(gameFields).map(([key, field]) => [
             key, field.type === 'checkbox' ? field.checked : field.valueAsNumber
@@ -809,7 +882,7 @@ async function initializeHome() {
     for (const button of document.querySelectorAll('.settingsSwitchServerButton')) {
         button.addEventListener('click', () => {
             const tab = button.closest('.settingsTab').id
-            pickServer(snapshot.servers, button, async server => {
+            pickServer(availableServers, button, async server => {
                 await saveSettings()
                 await core.invoke('select_server', { serverId: server.id })
                 setActiveServer(server)
@@ -829,9 +902,9 @@ async function initializeHome() {
             showError('게임 폴더를 열지 못했어요', error, openFolder)
         }
     })
-    playButton.disabled = false
     playButton.addEventListener('click', async () => {
         const server = activeServer
+        if (!server || needsServerSelection) return
         const progress = new core.Channel()
         progress.onmessage = message => { byId('launch_details_text').textContent = message }
         for (const button of homeList.children) button.disabled = true
@@ -848,22 +921,29 @@ async function initializeHome() {
         } finally {
             launchDetails.hidden = true
             byId('launch_content').hidden = false
-            playButton.disabled = false
+            playButton.disabled = !activeServer || needsServerSelection
             for (const button of homeList.children) button.disabled = false
         }
     })
 }
 
-loginButton.addEventListener('click', async () => {
-    loginButton.disabled = true
-    await showView('waitingContainer')
+loginButton.addEventListener('click', () => signIn(loginButton))
+changeServerAccount.addEventListener('click', () => signIn(changeServerAccount))
+retryVisibility.addEventListener('click', async () => {
+    if (accountActionInProgress) return
+    accountActionInProgress = true
+    retryVisibility.disabled = true
+    changeServerAccount.disabled = true
     try {
-        await showAuthenticated(await core.invoke('microsoft_sign_in'))
-    } catch (error) {
-        await showView('loginOptionsContainer')
-        showError('Microsoft 로그인', error, loginButton)
+        await showView('waitingContainer')
+        await showAuthenticated(activeProfile)
     } finally {
-        loginButton.disabled = false
+        accountActionInProgress = false
+        retryVisibility.disabled = false
+        changeServerAccount.disabled = false
+        if (visibleView === 'serverSetupContainer' && !byId('firstServerAccessActions').hidden) {
+            (retryVisibility.hidden ? changeServerAccount : retryVisibility).focus()
+        }
     }
 })
 

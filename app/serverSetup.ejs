@@ -1,8 +1,17 @@
 <div id="serverSetupContainer" class="entry-view" style="display: none;">
     <main class="server-setup" tabindex="-1">
-        <h1><%= lang('landing.serverSetupTitle') %></h1>
-        <p class="server-setup-description"><%= lang('landing.serverSetupDescription') %></p>
+        <h1 id="firstServerTitle"><%= lang('landing.serverSetupTitle') %></h1>
+        <p id="firstServerDescription" class="server-setup-description"><%= lang('landing.serverSetupDescription') %></p>
         <div id="firstServerList" class="server-setup-list" aria-label="<%= lang('landing.serversHeading') %>"></div>
         <p id="firstServerEmpty" class="server-setup-description" hidden><%= lang('landing.serverSetupEmpty') %></p>
+        <% if (typeof tauriRelease !== 'undefined') { %>
+        <h1 id="firstServerAccessEmpty" hidden><%= lang('landing.serverSetupAccessEmpty') %></h1>
+        <h1 id="firstServerVisibilityFailed" hidden><%= lang('landing.serverSetupVisibilityFailed') %></h1>
+        <div id="firstServerAccessActions" class="server-setup-actions" hidden>
+            <button id="retryServerVisibility" class="primary-button" type="button" hidden><%= lang('landing.serverSetupRetry') %></button>
+            <button id="changeServerAccount" class="quiet-button" type="button"><%= lang('landing.serverSetupChangeAccount') %></button>
+        </div>
+        <div id="firstSavedServerAccounts" class="server-setup-actions" hidden></div>
+        <% } %>
     </main>
 </div>

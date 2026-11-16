@@ -168,6 +168,8 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 .server-setup h1 { margin: 0 0 8px; font-size: 26px; line-height: 1.4; font-weight: 750; word-break: keep-all; }
 .server-setup-description { color: var(--muted); font-size: 15px; line-height: 1.65; }
 .server-setup-list { display: grid; gap: 8px; margin-top: 24px; }
+.server-setup-list:empty { display: none; }
+.server-setup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
 .server-setup-list .home-server { width: 100%; max-width: none; height: auto; min-height: 66px; padding: 14px 18px; gap: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 17px; line-height: 25px; font-weight: 600; }
 .server-setup-list .home-server img { width: 36px; height: 36px; }
 .server-setup-list .home-server:hover { color: var(--blue); border-color: var(--blue); background: var(--blue-wash); }

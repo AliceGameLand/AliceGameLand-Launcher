@@ -38,7 +38,7 @@ await mkdir(output, { recursive: true })
 const assets = [
     'css', 'fonts/Avenir-Medium.ttf', 'fonts/PretendardVariable.woff2', 'fonts/Pretendard-LICENSE.txt',
     'images/SealCircle.png', 'images/LoadingSeal.png', 'images/icons/profile.svg',
-    'images/backgrounds/0.jpg', 'images/backgrounds/servers', 'images/server-icons'
+    'images/backgrounds/0.jpg', 'images/server-icons'
 ]
 for (const folder of ['fonts', 'images']) {
     await rm(path.join(output, 'assets', folder), { recursive: true, force: true })
@@ -49,7 +49,10 @@ for (const asset of assets) {
     await cp(path.join(app, 'assets', asset), destination, { recursive: true })
 }
 await mkdir(path.join(output, 'assets', 'js'), { recursive: true })
-for (const name of ['serverart.js', 'servericon.js', 'artworktransition.js', 'uiclick.js']) {
+for (const name of ['serverart.js.mjs', 'artworktransition.js.mjs']) {
+    await rm(path.join(output, 'assets', 'js', name), { force: true })
+}
+for (const name of ['servericon.js', 'uiclick.js']) {
     const source = path.join(app, 'assets', 'js', name)
     const code = await readFile(source, 'utf8')
     // Keep the canonical Electron modules and expose their exports to the new renderer.

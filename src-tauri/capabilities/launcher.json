@@ -28,6 +28,8 @@
     "allow-select-shaderpack",
     "allow-microsoft-sign-out",
     "allow-account-profile",
+    "allow-list-accounts",
+    "allow-select-account",
     "allow-account-avatar",
     "allow-microsoft-sign-in"
   ]

@@ -12,6 +12,7 @@ mod instance_settings;
 mod java;
 mod minecraft;
 mod preferences;
+mod server_visibility;
 mod status;
 mod updater;
 #[cfg(windows)]
@@ -22,6 +23,7 @@ use std::{io::Write, path::PathBuf, sync::Mutex};
 use distribution::{Distribution, Server};
 use preferences::{heap_megabytes, GameSettings, JavaOptions, Preferences, Settings};
 use serde::{Deserialize, Serialize};
+use server_visibility::Policy;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -29,11 +31,22 @@ struct Launcher {
     servers: Vec<Server>,
     preferences_path: PathBuf,
     preferences: Mutex<Preferences>,
+    server_visibility: tokio::sync::Mutex<Option<Policy>>,
     login_receipt: Option<PathBuf>,
     verify_oauth: bool,
 }
 
 impl Launcher {
+    async fn can_use_server(&self, profile_id: &str, server_id: &str) -> bool {
+        self.servers.iter().any(|server| server.id == server_id)
+            && self
+                .server_visibility
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|policy| policy.allows(profile_id, server_id))
+    }
+
     fn data_directory(&self) -> Result<PathBuf, String> {
         self.preferences
             .lock()
@@ -75,6 +88,7 @@ struct Snapshot {
     updates_available: bool,
     servers: Vec<Server>,
     selected_server: Option<String>,
+    visibility_unavailable: bool,
 }
 
 #[tauri::command]
@@ -104,23 +118,56 @@ fn test_login_ready(
 }
 
 #[tauri::command]
-fn launcher_snapshot(app: AppHandle, launcher: State<'_, Launcher>) -> Result<Snapshot, String> {
+async fn launcher_snapshot(app: AppHandle, launcher: State<'_, Launcher>) -> Result<Snapshot, String> {
+    let profile = auth::account_profile(app.clone())
+        .await?
+        .ok_or("Microsoft 계정에 로그인해 주세요.")?;
+    let mut visibility = launcher.server_visibility.lock().await;
+    let cache = launcher.preferences_path.with_file_name("server-visibility.json");
+    let previous = visibility.clone();
+    *visibility = tauri::async_runtime::spawn_blocking(move || Policy::refresh(&cache, previous))
+        .await
+        .map_err(|_| "서버 표시 설정을 불러오지 못했어요.")?;
+    let servers: Vec<Server> = visibility
+        .as_ref()
+        .map(|policy| {
+            launcher
+                .servers
+                .iter()
+                .filter(|server| policy.allows(&profile.id, &server.id))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
     let preferences = launcher
         .preferences
         .lock()
         .map_err(|error| error.to_string())?;
+    let selected_server = preferences
+        .selected_server
+        .as_ref()
+        .filter(|id| servers.iter().any(|server| &server.id == *id))
+        .cloned();
     Ok(Snapshot {
         version: app.package_info().version.to_string(),
         updates_available: updater::available(),
-        servers: launcher.servers.clone(),
-        selected_server: preferences.selected_server.clone(),
+        servers,
+        selected_server,
+        visibility_unavailable: visibility.is_none(),
     })
 }
 
 #[tauri::command]
-fn select_server(server_id: String, launcher: State<'_, Launcher>) -> Result<(), String> {
-    if !launcher.servers.iter().any(|server| server.id == server_id) {
-        return Err("Unknown server".into());
+async fn select_server(
+    server_id: String,
+    app: AppHandle,
+    launcher: State<'_, Launcher>,
+) -> Result<(), String> {
+    let profile = auth::account_profile(app)
+        .await?
+        .ok_or("Microsoft 계정에 로그인해 주세요.")?;
+    if !launcher.can_use_server(&profile.id, &server_id).await {
+        return Err("이 계정에서 선택할 수 없는 서버예요.".into());
     }
     let mut preferences = launcher
         .preferences
@@ -424,8 +471,11 @@ async fn play_server(
     app: AppHandle,
     launcher: State<'_, Launcher>,
 ) -> Result<u32, String> {
-    if !launcher.servers.iter().any(|server| server.id == server_id) {
-        return Err("서버를 찾지 못했어요.".into());
+    let profile = auth::account_profile(app.clone())
+        .await?
+        .ok_or("Microsoft 계정에 로그인해 주세요.")?;
+    if !launcher.can_use_server(&profile.id, &server_id).await {
+        return Err("이 계정에서 실행할 수 없는 서버예요.".into());
     }
     let launch = {
         let profile = launcher
@@ -452,7 +502,10 @@ async fn play_server(
         }
     };
     let _ = progress.send("Minecraft 계정 확인 중");
-    let session = auth::game_session().await?;
+    let session = auth::game_session(&app, &profile.id).await?;
+    if !launcher.can_use_server(&session.profile.id, &launch.server_id).await {
+        return Err("이 계정에서 실행할 수 없는 서버예요.".into());
+    }
     tauri::async_runtime::spawn_blocking(move || game::play(launch, session, progress))
         .await
         .map_err(|_| "게임 준비가 중단됐어요.")?
@@ -520,6 +573,7 @@ fn main() {
                 servers: distribution.servers,
                 preferences_path,
                 preferences: Mutex::new(preferences),
+                server_visibility: tokio::sync::Mutex::new(None),
                 login_receipt,
                 verify_oauth,
             });
@@ -557,6 +611,8 @@ fn main() {
             select_shaderpack,
             auth::microsoft_sign_out,
             auth::account_profile,
+            auth::list_accounts,
+            auth::select_account,
             auth::account_avatar,
             auth::microsoft_sign_in
         ])
