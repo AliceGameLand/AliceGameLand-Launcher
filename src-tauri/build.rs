@@ -19,6 +19,7 @@ fn main() {
             "java_settings",
             "save_game_settings",
             "open_game_folder",
+            "open_launcher_logs",
             "mod_settings",
             "change_local_mod",
             "open_instance_folder",

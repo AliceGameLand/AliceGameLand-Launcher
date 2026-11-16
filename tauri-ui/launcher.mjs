@@ -38,7 +38,7 @@ const settingsTabs = [...document.querySelectorAll('.settingsNavItem')]
 const launcherSettings = byId('settingsTabLauncher')
 const gameDirectory = launcherSettings.querySelector('[cValue=DataDirectory]')
 const chooseGameDirectory = launcherSettings.querySelector('.settingsFileSelButton')
-const allowPrerelease = launcherSettings.querySelector('[cValue=AllowPrerelease]')
+const hideLauncherWhilePlaying = byId('hideLauncherWhilePlaying')
 const gameFields = {
     resWidth: byId('settingsGameWidth'),
     resHeight: byId('settingsGameHeight'),
@@ -534,7 +534,6 @@ function bindUpdates({ version, updatesAvailable }) {
     button.addEventListener('click', install)
     window.setTimeout(check, 1500)
     window.setInterval(check, 30 * 60 * 1000)
-    return check
 }
 
 function bindAbout(version) {
@@ -704,8 +703,7 @@ async function openSettings(id, source, refresh = false) {
         }
         selectedGameDirectory = null
         gameDirectory.value = saved.launcher.dataDirectory ?? ''
-        allowPrerelease.defaultChecked = saved.launcher.allowPrerelease ?? false
-        allowPrerelease.checked = allowPrerelease.hasAttribute('data-required') || allowPrerelease.defaultChecked
+        hideLauncherWhilePlaying.checked = saved.launcher.hideLauncherWhilePlaying ?? false
         await showSettingsAccount()
         selectSettingsTab(id)
         if (!refresh) {
@@ -824,7 +822,7 @@ function makeChoice(server, firstChoice = false) {
 function initializeHome(snapshot) {
     byId('homeLauncherVersion').textContent = 'v' + snapshot.version
     bindAbout(snapshot.version)
-    const refreshUpdates = bindUpdates(snapshot)
+    bindUpdates(snapshot)
 
     const settingsButton = byId('settingsMediaButton')
     const accountButton = byId('avatarOverlay')
@@ -838,10 +836,15 @@ function initializeHome(snapshot) {
         })
     }
     const refreshMods = bindMods()
-    const prerelease = snapshot.version.split('+')[0].includes('-')
-    allowPrerelease.toggleAttribute('data-required', prerelease)
-    allowPrerelease.disabled = !snapshot.updatesAvailable || prerelease
     launcherSettings.querySelector('.settingsFileSelDesc').textContent = '게임 파일은 이 폴더에 저장돼요. 폴더를 바꾸면 기존 파일은 원래 위치에 남아요.'
+    const openLauncherLogs = byId('openLauncherLogsButton')
+    openLauncherLogs.addEventListener('click', async () => {
+        try {
+            await core.invoke('open_launcher_logs')
+        } catch (error) {
+            showError('런처 로그 폴더를 열지 못했어요', error, openLauncherLogs)
+        }
+    })
     chooseGameDirectory.addEventListener('click', async () => {
         chooseGameDirectory.disabled = true
         settingsDone.disabled = true
@@ -864,14 +867,12 @@ function initializeHome(snapshot) {
         const settings = Object.fromEntries(Object.entries(gameFields).map(([key, field]) => [
             key, field.type === 'checkbox' ? field.checked : field.valueAsNumber
         ]))
-        const prereleaseChanged = !allowPrerelease.disabled && allowPrerelease.checked !== allowPrerelease.defaultChecked
         await core.invoke('save_game_settings', {
             settings,
             java: javaSettings.change(),
             dataDirectory: selectedGameDirectory,
-            allowPrerelease: allowPrerelease.disabled ? null : allowPrerelease.checked
+            hideLauncherWhilePlaying: hideLauncherWhilePlaying.checked
         })
-        if (prereleaseChanged) void refreshUpdates?.()
     }
     settingsDone.addEventListener('click', async () => {
         if (accountActionInProgress) return

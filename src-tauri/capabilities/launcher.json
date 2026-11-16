@@ -22,6 +22,7 @@
     "allow-java-settings",
     "allow-save-game-settings",
     "allow-open-game-folder",
+    "allow-open-launcher-logs",
     "allow-mod-settings",
     "allow-change-local-mod",
     "allow-open-instance-folder",

@@ -18,7 +18,13 @@ mod updater;
 #[cfg(windows)]
 mod wizard;
 
-use std::{io::Write, path::PathBuf, sync::Mutex};
+use std::{
+    fs::{self, OpenOptions},
+    io::Write,
+    path::PathBuf,
+    sync::Mutex,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use distribution::{Distribution, Server};
 use preferences::{heap_megabytes, GameSettings, JavaOptions, Preferences, Settings};
@@ -34,9 +40,33 @@ struct Launcher {
     server_visibility: tokio::sync::Mutex<Option<Policy>>,
     login_receipt: Option<PathBuf>,
     verify_oauth: bool,
+    hidden_games: Mutex<usize>,
 }
 
 impl Launcher {
+    fn log_directory(&self) -> PathBuf {
+        self.preferences_path.with_file_name("logs")
+    }
+
+    fn log(&self, message: &str) {
+        static WRITER: Mutex<()> = Mutex::new(());
+        let Ok(_writer) = WRITER.lock() else { return };
+        let directory = self.log_directory();
+        if fs::create_dir_all(&directory).is_err() {
+            return;
+        }
+        let path = directory.join("launcher.log");
+        if path.metadata().is_ok_and(|file| file.len() >= 512 * 1024) {
+            let _ = fs::rename(&path, directory.join("launcher.previous.log"));
+        }
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+            let time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default();
+            let _ = writeln!(file, "[{}] {message}", time.as_secs());
+        }
+    }
+
     async fn can_use_server(&self, profile_id: &str, server_id: &str) -> bool {
         self.servers.iter().any(|server| server.id == server_id)
             && self
@@ -347,7 +377,7 @@ fn save_game_settings(
     settings: GameSettings,
     java: Option<JavaSettingsChange>,
     data_directory: Option<PathBuf>,
-    allow_prerelease: Option<bool>,
+    hide_launcher_while_playing: bool,
     launcher: State<'_, Launcher>,
 ) -> Result<(), String> {
     if [settings.res_width, settings.res_height]
@@ -396,7 +426,7 @@ fn save_game_settings(
             settings,
             java,
             data_directory,
-            allow_prerelease,
+            hide_launcher_while_playing,
             &launcher.preferences_path,
         )
         .map_err(|_| "게임 설정을 저장하지 못했어요.".into())
@@ -405,6 +435,11 @@ fn save_game_settings(
 #[tauri::command]
 fn open_game_folder(launcher: State<'_, Launcher>) -> Result<(), String> {
     open_folder(launcher.data_directory()?)
+}
+
+#[tauri::command]
+fn open_launcher_logs(launcher: State<'_, Launcher>) -> Result<(), String> {
+    open_folder(launcher.log_directory())
 }
 
 #[tauri::command]
@@ -455,7 +490,7 @@ fn select_shaderpack(
 }
 
 fn open_folder(path: PathBuf) -> Result<(), String> {
-    std::fs::create_dir_all(&path).map_err(|_| "게임 데이터 폴더를 만들지 못했어요.")?;
+    fs::create_dir_all(&path).map_err(|_| "폴더를 만들지 못했어요.")?;
     let opener = if cfg!(windows) {
         "explorer.exe"
     } else {
@@ -464,12 +499,44 @@ fn open_folder(path: PathBuf) -> Result<(), String> {
     let mut process = std::process::Command::new(opener)
         .arg(path)
         .spawn()
-        .map_err(|_| "게임 데이터 폴더를 열지 못했어요.")?;
+        .map_err(|_| "폴더를 열지 못했어요.")?;
     std::thread::spawn(move || {
         let _ = process.wait();
     });
     Ok(())
 }
+
+fn set_game_window_hidden(app: &AppHandle, hidden: bool) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = handle.get_webview_window("main") else {
+            return;
+        };
+        // Keep the window hidden until the last game that hid it has exited.
+        let launcher = handle.state::<Launcher>();
+        let Ok(mut count) = launcher.hidden_games.lock() else {
+            return;
+        };
+        let previous = *count;
+        *count = if hidden {
+            previous + 1
+        } else {
+            previous.saturating_sub(1)
+        };
+        match (previous, *count) {
+            (0, 1) => {
+                let _ = window.hide();
+            }
+            (1, 0) => {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            _ => {}
+        }
+    });
+}
+
 #[tauri::command]
 async fn play_server(
     server_id: String,
@@ -477,13 +544,15 @@ async fn play_server(
     app: AppHandle,
     launcher: State<'_, Launcher>,
 ) -> Result<u32, String> {
+    launcher.log("Game launch requested");
     let profile = auth::account_profile(app.clone())
-        .await?
+        .await
+        .inspect_err(|_| launcher.log("Could not load the Minecraft account"))?
         .ok_or("Microsoft 계정에 로그인해 주세요.")?;
     if !launcher.can_use_server(&profile.id, &server_id).await {
         return Err("이 계정에서 실행할 수 없는 서버예요.".into());
     }
-    let launch = {
+    let (launch, hide_launcher) = {
         let profile = launcher
             .preferences_path
             .parent()
@@ -498,24 +567,53 @@ async fn play_server(
             .ok_or("게임 데이터 폴더를 찾지 못했어요.")?
             .to_path_buf();
         let (settings, java_options) = preferences.launch_settings(&server_id);
-        game::Launch {
+        let launch = game::Launch {
             profile,
             root,
             server_id,
             launcher_version: app.package_info().version.to_string(),
             settings,
             java_options,
-        }
+        };
+        (launch, preferences.hide_launcher_while_playing())
     };
     let _ = progress.send("Minecraft 계정 확인 중");
-    let session = auth::game_session(&app, &profile.id).await?;
-    if !launcher.can_use_server(&session.profile.id, &launch.server_id).await {
+    let session = auth::game_session(&app, &profile.id)
+        .await
+        .inspect_err(|_| launcher.log("Could not create the Minecraft session"))?;
+    if !launcher
+        .can_use_server(&session.profile.id, &launch.server_id)
+        .await
+    {
         return Err("이 계정에서 실행할 수 없는 서버예요.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || game::play(launch, session, progress))
-        .await
-        .map_err(|_| "게임 준비가 중단됐어요.")?
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        game::play(launch, session, progress, move |event| {
+            let launcher = app.state::<Launcher>();
+            match event {
+                game::ProcessEvent::Started => {
+                    if hide_launcher {
+                        set_game_window_hidden(&app, true);
+                    }
+                    launcher.log("Minecraft process started");
+                }
+                game::ProcessEvent::Exited(status) => {
+                    if hide_launcher {
+                        set_game_window_hidden(&app, false);
+                    }
+                    match status {
+                        Some(status) => launcher.log(&format!("Minecraft exited ({status})")),
+                        None => launcher.log("Minecraft exit status unavailable"),
+                    }
+                }
+            }
+        })
+    })
+    .await
+    .inspect_err(|_| launcher.log("Game launch task interrupted"))
+    .map_err(|_| "게임 준비가 중단됐어요.")?
+    .inspect_err(|_| launcher.log("Could not prepare or start Minecraft"))
+    .map_err(|error| error.to_string())
 }
 fn test_profile() -> std::io::Result<Option<PathBuf>> {
     let Some(path) = std::env::var_os("ALICE_TAURI_TEST_PROFILE").map(PathBuf::from) else {
@@ -575,14 +673,17 @@ fn main() {
             let distribution = Distribution::local(&profile.join("distribution.json"))
                 .map_err(std::io::Error::other)?;
             let preferences = Preferences::load(&preferences_path, &data_root)?;
-            app.manage(Launcher {
+            let launcher = Launcher {
                 servers: distribution.servers,
                 preferences_path,
                 preferences: Mutex::new(preferences),
                 server_visibility: tokio::sync::Mutex::new(None),
                 login_receipt,
                 verify_oauth,
-            });
+                hidden_games: Mutex::new(0),
+            };
+            launcher.log(&format!("Launcher {} started", app.package_info().version));
+            app.manage(launcher);
             let mut window =
                 tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
             if verify_login {
@@ -611,6 +712,7 @@ fn main() {
             java_settings,
             save_game_settings,
             open_game_folder,
+            open_launcher_logs,
             mod_settings,
             change_local_mod,
             open_instance_folder,

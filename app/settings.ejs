@@ -264,11 +264,35 @@
                 <div id="settingsJVMOptsDesc"><%- lang('settings.jvmOptsDesc') %><br><a href="#" id="settingsJvmOptsLink"><!-- Available Options --></a></div>
             </div>
         </div>
+        <% const previewRelease = typeof tauriRelease === 'undefined' ? null : tauriRelease %>
         <div id="settingsTabLauncher" class="settingsTab" style="display: none;">
             <div class="settingsTabHeader">
                 <h1 class="settingsTabHeaderText"><%- lang('settings.launcherTabHeaderText') %></h1>
-                <span class="settingsTabHeaderDesc"><%- lang('settings.launcherTabHeaderDesc') %></span>
+                <span class="settingsTabHeaderDesc"><%- lang(previewRelease ? 'settings.launcherBehaviorDesc' : 'settings.launcherTabHeaderDesc') %></span>
             </div>
+            <% if (previewRelease) { %>
+            <div class="settingsFieldContainer">
+                <div class="settingsFieldLeft">
+                    <span class="settingsFieldTitle" id="hideLauncherWhilePlayingTitle"><%= lang('settings.hideLauncherWhilePlayingTitle') %></span>
+                    <span class="settingsFieldDesc" id="hideLauncherWhilePlayingDesc"><%= lang('settings.hideLauncherWhilePlayingDesc') %></span>
+                </div>
+                <div class="settingsFieldRight">
+                    <label class="toggleSwitch">
+                        <input type="checkbox" id="hideLauncherWhilePlaying" aria-labelledby="hideLauncherWhilePlayingTitle" aria-describedby="hideLauncherWhilePlayingDesc">
+                        <span class="toggleSwitchSlider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="settingsFieldContainer">
+                <div class="settingsFieldLeft">
+                    <span class="settingsFieldTitle"><%= lang('settings.launcherLogsTitle') %></span>
+                    <span class="settingsFieldDesc" id="launcherLogsDesc"><%= lang('settings.launcherLogsDesc') %></span>
+                </div>
+                <div class="settingsFieldRight">
+                    <button class="settingsAboutButton" id="openLauncherLogsButton" type="button" aria-label="<%= lang('settings.openLauncherLogsLabel') %>" aria-describedby="launcherLogsDesc"><%= lang('settings.openLauncherLogsButton') %></button>
+                </div>
+            </div>
+            <% } else { %>
             <div class="settingsFieldContainer">
                 <div class="settingsFieldLeft">
                     <span class="settingsFieldTitle"><%- lang('settings.allowPrereleaseTitle') %></span>
@@ -281,6 +305,7 @@
                     </label>
                 </div>
             </div>
+            <% } %>
             <div class="settingsFileSelContainer">
                 <div class="settingsFileSelContent">
                     <div class="settingsFieldTitle" id="settingsDataDirTitle"><%- lang('settings.dataDirectoryTitle') %></div>
@@ -298,7 +323,6 @@
             </div>
         </div>
         <div id="settingsTabAbout" class="settingsTab" style="display: none;">
-            <% const previewRelease = typeof tauriRelease === 'undefined' ? null : tauriRelease %>
             <div class="settingsTabHeader">
                 <h1 class="settingsTabHeaderText"><%- lang('settings.aboutTabHeaderText') %></h1>
                 <span class="settingsTabHeaderDesc"><%- lang('settings.aboutTabHeaderDesc') %></span>

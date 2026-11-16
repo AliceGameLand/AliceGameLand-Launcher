@@ -49,15 +49,6 @@ fn is_newer(current: &Version, release: &Version, prerelease: bool) -> bool {
     release.cmp_precedence(current).is_gt() && (prerelease || release.pre.is_empty())
 }
 
-fn allows_preview(app: &AppHandle, launcher: &Launcher) -> Result<bool, String> {
-    Ok(!app.package_info().version.pre.is_empty()
-        || launcher
-            .preferences
-            .lock()
-            .map_err(|_| CHECK_FAILED)?
-            .allow_prerelease())
-}
-
 fn trusted_transfer(url: &Url) -> bool {
     url.scheme() == "https"
         && url.username().is_empty()
@@ -127,22 +118,28 @@ pub async fn check_launcher_update(
         .try_lock()
         .map_err(|_| "업데이트 작업이 진행 중이에요.")?;
     *pending = None;
-    let prerelease = allows_preview(&app, &launcher)?;
+    let prerelease = !app.package_info().version.pre.is_empty();
     let stable = check_feed(&app, STABLE_FEED, false);
     let latest = if prerelease {
         let (stable, preview) = tokio::join!(stable, check_feed(&app, PREVIEW_FEED, true));
         match (stable, preview) {
-            (Ok(stable), Ok(preview)) => [stable, preview]
+            (Ok(stable), Ok(preview)) => Ok([stable, preview]
                 .into_iter()
                 .flatten()
-                .max_by_key(|update| Version::parse(&update.version).ok()),
-            (Ok(Some(update)), Err(_)) | (Err(_), Ok(Some(update))) => Some(update),
-            (Ok(None), Err(_)) => None,
-            (Err(error), _) => return Err(error),
+                .max_by_key(|update| Version::parse(&update.version).ok())),
+            (Ok(Some(update)), Err(_)) | (Err(_), Ok(Some(update))) => Ok(Some(update)),
+            (Ok(None), Err(_)) => Ok(None),
+            (Err(error), _) => Err(error),
         }
     } else {
-        stable.await?
+        stable.await
     };
+    let latest = latest.inspect_err(|error| launcher.log(error))?;
+    launcher.log(if latest.is_some() {
+        "Launcher update available"
+    } else {
+        "No launcher update available"
+    });
     let details = latest.as_ref().map(|update| AvailableUpdate {
         version: update.version.clone(),
         notes: update
@@ -235,11 +232,14 @@ pub async fn install_launcher_update(
     if !is_newer(
         &app.package_info().version,
         &release,
-        allows_preview(&app, &launcher)?,
+        !app.package_info().version.pre.is_empty(),
     ) {
-        return Err("업데이트 설정이 바뀌었어요. 새 버전을 다시 확인해 주세요.".into());
+        return Err("설치할 수 있는 새 버전을 다시 확인해 주세요.".into());
     }
-    let bytes = download(update, progress).await?;
+    launcher.log(&format!("Installing launcher update {release}"));
+    let bytes = download(update, progress)
+        .await
+        .inspect_err(|error| launcher.log(error))?;
     if !available() {
         return Err("설치 위치가 바뀌었어요. 런처를 다시 열어 주세요.".into());
     }
@@ -253,7 +253,9 @@ pub async fn install_launcher_update(
             .map_err(|_| "업데이트를 적용하지 못했어요. 설치 위치와 권한을 확인해 주세요.")
     })
     .await
-    .map_err(|_| "업데이트 작업이 중단됐어요.")??;
+    .map_err(|_| "업데이트 작업이 중단됐어요.")
+    .and_then(|result| result)
+    .inspect_err(|error| launcher.log(error))?;
     app.restart();
 }
 

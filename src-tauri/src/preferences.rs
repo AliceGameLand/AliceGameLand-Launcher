@@ -46,7 +46,7 @@ pub struct GameSettings {
 #[derive(Clone, Default, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 struct LauncherSettings {
-    allow_prerelease: Option<bool>,
+    hide_launcher_while_playing: bool,
     data_directory: Option<PathBuf>,
 }
 
@@ -119,8 +119,8 @@ impl Preferences {
         &self.settings
     }
 
-    pub fn allow_prerelease(&self) -> bool {
-        self.settings.launcher.allow_prerelease.unwrap_or(false)
+    pub fn hide_launcher_while_playing(&self) -> bool {
+        self.settings.launcher.hide_launcher_while_playing
     }
 
     pub fn update_game_settings(
@@ -128,7 +128,7 @@ impl Preferences {
         settings: GameSettings,
         java: Option<(String, JavaOptions)>,
         data_directory: Option<PathBuf>,
-        allow_prerelease: Option<bool>,
+        hide_launcher_while_playing: bool,
         path: &Path,
     ) -> io::Result<()> {
         let previous = std::mem::replace(&mut self.settings.game, settings);
@@ -138,16 +138,16 @@ impl Preferences {
         });
         let previous_directory = data_directory
             .map(|directory| self.settings.launcher.data_directory.replace(directory));
-        let previous_prerelease = allow_prerelease
-            .map(|allowed| self.settings.launcher.allow_prerelease.replace(allowed));
+        let previous_visibility = std::mem::replace(
+            &mut self.settings.launcher.hide_launcher_while_playing,
+            hide_launcher_while_playing,
+        );
         if let Err(error) = self.save(path) {
             self.settings.game = previous;
             if let Some(directory) = previous_directory {
                 self.settings.launcher.data_directory = directory;
             }
-            if let Some(allowed) = previous_prerelease {
-                self.settings.launcher.allow_prerelease = allowed;
-            }
+            self.settings.launcher.hide_launcher_while_playing = previous_visibility;
             match previous_java {
                 Some((server_id, Some(options))) => {
                     self.java_config.insert(server_id, options);
@@ -255,7 +255,7 @@ mod tests {
         let legacy = root.path().join(LEGACY_APP);
         fs::create_dir(&legacy).unwrap();
         let config = r#"{"selectedServer":"alice","settings":{"game":{"fullscreen":true},
-            "launcher":{"dataDirectory":"existing-data"}},
+            "launcher":{"dataDirectory":"existing-data","allowPrerelease":true}},
             "javaConfig":{"alice":{"executable":"old/javaw.exe","minRAM":"4G"}},
             "authenticationDatabase":{"id":{"accessToken":"fixture-only"}}}"#;
         let legacy_file = legacy.join("config.json");
@@ -263,6 +263,7 @@ mod tests {
         let path = root.path().join("tauri/settings.json");
 
         let mut preferences = Preferences::load(&path, root.path()).unwrap();
+        assert!(!preferences.hide_launcher_while_playing());
         let saved = fs::read_to_string(&path).unwrap();
         assert!(saved.contains("existing-data"));
         assert!(saved.contains("4G"));
@@ -302,7 +303,7 @@ mod tests {
                 game,
                 Some(("alice".into(), java)),
                 Some(directory.clone()),
-                Some(true),
+                true,
                 &path,
             )
             .unwrap();
@@ -312,12 +313,12 @@ mod tests {
             GameSettings::default(),
             Some(("alice".into(), JavaOptions::default())),
             Some(root.path().join("another-folder")),
-            Some(false),
+            false,
             &path.join("not-a-directory"),
         );
         assert!(error.is_err());
         assert_eq!(reopened.game_data_dir(), Some(directory.as_path()));
-        assert!(reopened.allow_prerelease());
+        assert!(reopened.hide_launcher_while_playing());
         let (game, java) = reopened.launch_settings("alice");
         assert_eq!(game.fullscreen, Some(true));
         assert_eq!(java.min_ram.as_deref(), Some("3072M"));

@@ -3,7 +3,7 @@ use std::{
     env, fs,
     io::{self, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::{Arc, LazyLock, Mutex},
     time::Duration,
 };
@@ -454,7 +454,17 @@ fn prepare_launch(
     Ok(PreparedLaunch { command, natives })
 }
 
-pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str>) -> Result<u32> {
+pub enum ProcessEvent {
+    Started,
+    Exited(Option<ExitStatus>),
+}
+
+pub fn play(
+    launch: Launch,
+    session: GameSession,
+    progress: Channel<&'static str>,
+    on_event: impl Fn(ProcessEvent) + Send + 'static,
+) -> Result<u32> {
     let running = RunningGame::reserve(launch.server_id.clone())?;
     let _preparation = PREPARATION
         .try_lock()
@@ -467,30 +477,31 @@ pub fn play(launch: Launch, session: GameSession, progress: Channel<&'static str
     let _ = progress.send("게임 시작 중");
     let mut child = command.spawn()?;
     let pid = child.id();
+    on_event(ProcessEvent::Started);
+    let finish = move |status, running| {
+        drop(natives);
+        drop(running);
+        on_event(ProcessEvent::Exited(status));
+    };
     if detached {
-        std::thread::spawn(move || {
-            let _ = child.wait();
-            drop(natives);
-            drop(running);
-        });
+        std::thread::spawn(move || finish(child.wait().ok(), running));
     } else {
         let attached = Arc::new(Mutex::new(child));
         if let Ok(mut games) = RUNNING.lock() {
             games.insert(running.0.clone(), Some(Arc::clone(&attached)));
         }
         std::thread::spawn(move || {
-            loop {
+            let status = loop {
                 let status = attached
                     .lock()
                     .ok()
                     .and_then(|mut child| child.try_wait().ok());
-                if !matches!(status, Some(None)) {
-                    break;
+                match status {
+                    Some(None) => std::thread::sleep(Duration::from_millis(250)),
+                    _ => break status.flatten(),
                 }
-                std::thread::sleep(Duration::from_millis(250));
-            }
-            drop(natives);
-            drop(running);
+            };
+            finish(status, running);
         });
     }
     Ok(pid)
