@@ -114,6 +114,10 @@ impl Distribution {
             {
                 server.name = "버컴퍼니 다이아 대결".into();
             }
+            if server.id == "AliceTailTag-26.2" && server.name == "혜안져스 꼬리잡기" {
+                // Keep the instance ID and visibility group for existing profiles.
+                server.name = "혜안져스 미니게임2".into();
+            }
             server.files()?;
         }
         Ok(distribution)

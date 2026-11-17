@@ -20,8 +20,13 @@ for(const method of ['getDistribution', 'refreshDistributionOrFallback']){
     api[method] = async (...args) => {
         const distribution = await load(...args)
         for(const server of distribution?.servers ?? []){
-            if(server.rawServer.id === 'AliceDiamond-26.2' && server.rawServer.name === '버컴퍼니 다이아몬드 대결'){
-                server.rawServer.name = '버컴퍼니 다이아 대결'
+            const { rawServer } = server
+            if(rawServer.id === 'AliceDiamond-26.2' && rawServer.name === '버컴퍼니 다이아몬드 대결'){
+                rawServer.name = '버컴퍼니 다이아 대결'
+            }
+            if(rawServer.id === 'AliceTailTag-26.2' && rawServer.name === '혜안져스 꼬리잡기'){
+                // Keep the instance ID so installed game settings and server visibility carry over.
+                rawServer.name = '혜안져스 미니게임2'
             }
         }
         return distribution

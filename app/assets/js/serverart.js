@@ -3,7 +3,6 @@ const backgrounds = Object.freeze({
     'AliceDiamond-26.2': 'diamond',
     'AliceVrMinigames-26.2': 'minigames',
     'BurcomPvP-26.3': 'pvp',
-    'AliceTailTag-26.2': 'tail-tag',
     'AliceCrimeScene-26.2': 'crime-scene'
 })
 

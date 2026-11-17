@@ -6,9 +6,15 @@ const vm = require('node:vm')
 
 test('Both cached and refreshed manifests use the shorter name without changing identity or custom names', async () => {
     let name = '버컴퍼니 다이아몬드 대결'
+    let minigamesName = '혜안져스 꼬리잡기'
     class DistributionAPI {
         isDevMode(){ return true }
-        async getDistribution(){ return { servers:[{ rawServer:{ id:'AliceDiamond-26.2', name } }] } }
+        async getDistribution(){
+            return { servers: [
+                { rawServer: { id: 'AliceDiamond-26.2', name } },
+                { rawServer: { id: 'AliceTailTag-26.2', name: minigamesName } }
+            ] }
+        }
         async refreshDistributionOrFallback(){ return this.getDistribution() }
     }
     const exports = {}
@@ -16,11 +22,16 @@ test('Both cached and refreshed manifests use the shorter name without changing 
         exports, process:{env:{}}, require: name => name === 'helios-core/common' ? {DistributionAPI} : {getLauncherDirectory:()=>''}
     })
     for(const method of ['getDistribution','refreshDistributionOrFallback']){
-        const server = (await exports.DistroAPI[method]()).servers[0].rawServer
+        const [diamond, minigames] = (await exports.DistroAPI[method]()).servers
+        const server = diamond.rawServer
         assert.equal(server.name,'버컴퍼니 다이아 대결')
         assert.equal(server.id,'AliceDiamond-26.2')
+        assert.equal(minigames.rawServer.name, '혜안져스 미니게임2')
+        assert.equal(minigames.rawServer.id, 'AliceTailTag-26.2')
     }
     name = '다음 시즌 이름'
-    assert.equal((await exports.DistroAPI.getDistribution()).servers[0].rawServer.name,name)
+    minigamesName = '다음 미니게임'
+    const [diamond, minigames] = (await exports.DistroAPI.getDistribution()).servers
+    assert.equal(diamond.rawServer.name, name)
+    assert.equal(minigames.rawServer.name, minigamesName)
 })
-

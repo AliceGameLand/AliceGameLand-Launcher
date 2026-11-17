@@ -1,5 +1,5 @@
 {
-  "version": "1.0.246",
+  "version": "1.0.247",
   "discord": {
     "clientId": "1552647446025216110"
   },
@@ -1679,15 +1679,15 @@
     },
     {
       "id": "AliceTailTag-26.2",
-      "name": "혜안져스 꼬리잡기",
+      "name": "혜안져스 미니게임2",
       "description": "Minecraft 26.2 · NeoForge",
-      "icon": "https://github.com/AliceGameLand/AliceGameLand-Distribution/releases/download/tail-tag-v1.0.0/tail-tag.png",
+      "icon": "https://github.com/AliceGameLand/AliceGameLand-Distribution/releases/download/hyean-minigames-2-v1.0.0/hyean-minigames-2.png",
       "discord": {
-        "shortId": "혜안져스 꼬리잡기",
-        "largeImageText": "혜안져스 꼬리잡기",
-        "largeImageKey": "https://github.com/AliceGameLand/AliceGameLand-Distribution/releases/download/tail-tag-v1.0.0/tail-tag.png"
+        "shortId": "혜안져스 미니게임2",
+        "largeImageText": "혜안져스 미니게임2",
+        "largeImageKey": "https://github.com/AliceGameLand/AliceGameLand-Distribution/releases/download/hyean-minigames-2-v1.0.0/hyean-minigames-2.png"
       },
-      "version": "1.0.1",
+      "version": "1.0.2",
       "address": "alicehiyam-oracle.dreamcraft.kr:25566",
       "minecraftVersion": "26.2",
       "javaOptions": {
