@@ -17,6 +17,11 @@ const overlay = byId('overlayContainer')
 const acknowledge = byId('overlayAcknowledge')
 const playButton = byId('launch_button')
 const launchDetails = byId('launch_details')
+const launchStage = byId('launch_details_text')
+const initialLaunchStage = launchStage.textContent
+const launchProgress = byId('launch_progress')
+const launchPercent = byId('launch_progress_label')
+const launchAmount = byId('launch_progress_amount')
 const homeStatus = byId('homeServerStatus')
 let needsServerSelection
 let availableServers = []
@@ -158,6 +163,46 @@ function setActiveServer(server) {
     homeStatus.dataset.state = 'checking'
     homeStatus.textContent = '상태 확인 중…'
     if (visibleView === 'landingContainer') void refreshServerStatus()
+}
+
+function formatDownloadSize(bytes) {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 ** 2) return (bytes / 1024).toFixed(1) + ' KiB'
+    return (bytes / 1024 ** 2).toFixed(1) + ' MiB'
+}
+
+// Only changing phases should trigger a live announcement while counters update.
+function renderLaunchProgress({ phase, message, current, total }) {
+    let stage = message
+    let amount = ''
+    if (phase === 'checking') {
+        stage = '게임 파일 확인 중'
+        amount = current.toLocaleString('ko-KR') + ' / ' + total.toLocaleString('ko-KR') + '개'
+    } else if (phase === 'downloading') {
+        stage = message ?? '파일 다운로드 중'
+        amount = total == null ? formatDownloadSize(current) + ' 받음' : formatDownloadSize(current) + ' / ' + formatDownloadSize(total)
+    }
+    const stageChanged = launchStage.textContent !== stage
+    if (stageChanged) launchStage.textContent = stage
+    launchAmount.textContent = amount
+    launchAmount.hidden = !amount
+    if (amount) launchProgress.setAttribute('aria-describedby', launchAmount.id)
+    else launchProgress.removeAttribute('aria-describedby')
+    if (total > 0) {
+        const fraction = Math.min(1, current / total)
+        // A new phase starts at its own value without sweeping back from the previous one.
+        const advancing = !stageChanged && launchProgress.position >= 0 && fraction >= launchProgress.position
+        launchDetails.dataset.fillMotion = advancing ? 'advance' : 'reset'
+        launchDetails.style.setProperty('--launch-fraction', fraction)
+        launchProgress.max = total
+        launchProgress.value = current
+        launchPercent.textContent = Math.floor(fraction * 100) + '%'
+        launchPercent.hidden = false
+    } else {
+        delete launchDetails.dataset.fillMotion
+        launchProgress.removeAttribute('value')
+        launchPercent.hidden = true
+    }
 }
 
 async function refreshServerStatus() {
@@ -915,12 +960,11 @@ function initializeHome(snapshot) {
         const server = activeServer
         if (!server || needsServerSelection) return
         const progress = new core.Channel()
-        progress.onmessage = message => { byId('launch_details_text').textContent = message }
+        progress.onmessage = renderLaunchProgress
         for (const button of homeList.children) button.disabled = true
         playButton.disabled = true
         byId('launch_content').hidden = true
-        byId('launch_progress').removeAttribute('value')
-        byId('launch_progress_label').hidden = true
+        renderLaunchProgress({ phase: 'status', message: initialLaunchStage })
         launchDetails.hidden = false
         try {
             await core.invoke('play_server', { serverId: server.id, progress })

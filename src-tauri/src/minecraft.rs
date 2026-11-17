@@ -9,6 +9,7 @@ use reqwest::{blocking::Client, Url};
 use serde::Deserialize;
 
 use crate::artifacts::{self, Download, Hash, PlannedArtifact, Result};
+use crate::validation_cache::ValidationCache;
 
 const INDEX: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const METADATA_LIMIT: u64 = 8 * 1024 * 1024;
@@ -280,7 +281,12 @@ pub fn version_path(version_id: &str) -> PathBuf {
     PathBuf::from("common/versions").join(version_id)
 }
 
-pub fn files(client: &Client, root: &Path, version_id: &str) -> Result<Vec<PlannedArtifact>> {
+pub fn files(
+    client: &Client,
+    root: &Path,
+    version_id: &str,
+    cache: &ValidationCache,
+) -> Result<Vec<PlannedArtifact>> {
     if !artifacts::safe_segment(version_id) {
         return Err("Invalid Minecraft version".into());
     }
@@ -310,7 +316,7 @@ pub fn files(client: &Client, root: &Path, version_id: &str) -> Result<Vec<Plann
         relative_path: version_base.join(format!("{version_id}.json")),
     };
     artifacts::validate_metadata(&version_json.download)?;
-    artifacts::ensure(client, root, &version_json)?;
+    artifacts::ensure_metadata(client, root, &version_json, cache)?;
     let version: Version =
         serde_json::from_reader(fs::File::open(root.join(&version_json.relative_path))?)?;
     if version.id != version_id || !artifacts::safe_segment(&version.asset_index.id) {
@@ -321,7 +327,7 @@ pub fn files(client: &Client, root: &Path, version_id: &str) -> Result<Vec<Plann
         PathBuf::from("common/assets/indexes").join(format!("{}.json", version.asset_index.id)),
         version.asset_index.download,
     )?;
-    artifacts::ensure(client, root, &asset_index)?;
+    artifacts::ensure_metadata(client, root, &asset_index, cache)?;
     let assets = serde_json::from_reader(fs::File::open(root.join(&asset_index.relative_path))?)?;
     let mut files = assets_plan(assets)?;
     files.push(plan(

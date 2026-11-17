@@ -15,6 +15,7 @@ mod preferences;
 mod server_visibility;
 mod status;
 mod updater;
+mod validation_cache;
 #[cfg(windows)]
 mod wizard;
 
@@ -540,7 +541,7 @@ fn set_game_window_hidden(app: &AppHandle, hidden: bool) {
 #[tauri::command]
 async fn play_server(
     server_id: String,
-    progress: tauri::ipc::Channel<&'static str>,
+    progress: tauri::ipc::Channel<artifacts::LaunchProgress>,
     app: AppHandle,
     launcher: State<'_, Launcher>,
 ) -> Result<u32, String> {
@@ -577,7 +578,9 @@ async fn play_server(
         };
         (launch, preferences.hide_launcher_while_playing())
     };
-    let _ = progress.send("Minecraft 계정 확인 중");
+    let _ = progress.send(artifacts::LaunchProgress::Status {
+        message: "Minecraft 계정 확인 중",
+    });
     let session = auth::game_session(&app, &profile.id)
         .await
         .inspect_err(|_| launcher.log("Could not create the Minecraft session"))?;

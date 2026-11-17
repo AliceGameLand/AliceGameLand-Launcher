@@ -43,6 +43,9 @@
                         </div>
                         <progress id="launch_progress" value="0" max="100" aria-labelledby="launch_details_text"></progress>
                         <div class="launch-pending-track" aria-hidden="true"></div>
+                        <% if (typeof tauriRelease !== 'undefined') { %>
+                        <span id="launch_progress_amount" hidden></span>
+                        <% } %>
                     </div>
                 </div>
             </div>

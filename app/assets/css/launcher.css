@@ -242,7 +242,15 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
     border-radius: 6px;
     background: var(--rail);
 }
-.home-server span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.home-server span { flex: 1; min-width: 0; overflow: hidden; }
+.home-server-list .home-server span {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+}
 .home-server img { width: 32px; height: 32px; object-fit: contain; background: transparent; }
 .home-server:hover:where(:enabled) { background: var(--paper); }
 .home-server[aria-pressed="true"] {
@@ -360,16 +368,24 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 }
 #launch_details_text { font-weight: 600; }
 #launch_progress_label { color: var(--blue); font-weight: 700; font-variant-numeric: tabular-nums; }
+#launch_progress_amount { margin-top: 5px; color: var(--muted); font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; }
 #launch_progress { display: block; width: 100%; height: 7px; margin-top: 8px; appearance: none; }
 #launch_progress::-webkit-progress-bar { border-radius: 5px; background: var(--blue-wash); }
 #launch_progress::-webkit-progress-value { border-radius: 5px; background: var(--blue); }
-#launch_progress:indeterminate { opacity: 0; }
+#launch_progress:indeterminate,
+#launch_details[data-fill-motion] #launch_progress { opacity: 0; }
 .launch-pending-track { display: none; }
-#launch_progress:indeterminate + .launch-pending-track { display: block; height: 7px; margin-top: -7px; overflow: hidden; border-radius: 5px; background: var(--blue-wash); }
-.launch-pending-track::before { content: ''; display: block; width: 35%; height: 100%; border-radius: inherit; background: var(--blue); animation: launch-pending 1.6s ease-in-out infinite alternate; }
+#launch_progress:indeterminate + .launch-pending-track,
+#launch_details[data-fill-motion] .launch-pending-track { display: block; height: 7px; margin-top: -7px; overflow: hidden; border-radius: 5px; background: var(--blue-wash); }
+.launch-pending-track::before { content: ''; display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+#launch_progress:indeterminate + .launch-pending-track::before { width: 35%; animation: launch-pending 1.6s cubic-bezier(.45, 0, .55, 1) infinite alternate; }
+#launch_details[data-fill-motion] .launch-pending-track::before { transform: scaleX(var(--launch-fraction)); transform-origin: left; }
+@media (prefers-reduced-motion: no-preference) {
+    #launch_details[data-fill-motion="advance"] .launch-pending-track::before { transition: transform 180ms linear; }
+}
 @keyframes launch-pending {
     from { transform: translateX(0); }
-    to { transform: translateX(186%); }
+    to { transform: translateX(185.7%); }
 }
 
 .entry-view {
@@ -533,20 +549,15 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 #loadingBar::before {
     display: block;
     content: '';
-    width: 36%;
+    width: 35%;
     height: 100%;
     background: #ffffff;
-    animation: loadSlide 1.6s ease-in-out infinite;
+    animation: launch-pending 1.6s cubic-bezier(.45, 0, .55, 1) infinite alternate;
 }
 
 @keyframes loadEnter {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes loadSlide {
-    from { transform: translateX(-100%); }
-    to { transform: translateX(280%); }
 }
 
 @keyframes launcher-reveal {
@@ -1713,7 +1724,8 @@ input:checked + .toggleSwitchSlider:before {
     #settingsContainer #settingsGameResolutionContainer { align-items: flex-start; flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
-    .launch-pending-track::before { animation: none; transform: translateX(93%); }
+    #launch_progress:indeterminate + .launch-pending-track::before, #loadingBar::before { animation: none; transform: translateX(93%); }
+    .launch-pending-track::before, #loadingBar::before { transition-property: none; }
     #loadingContent, #loadingBar::before { animation: none; }
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

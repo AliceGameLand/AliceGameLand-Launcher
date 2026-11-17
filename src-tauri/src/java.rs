@@ -10,6 +10,8 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
+use crate::artifacts::{LaunchProgress, ProgressCounter};
+
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 static PREPARATION: Mutex<()> = Mutex::new(());
 const VERSION: &str = "25.0.5+8";
@@ -154,7 +156,14 @@ fn install_launcher(destination: &Path, executable: &Path) -> Result<()> {
     }
 }
 
-fn download(runtime: &Runtime, destination: &Path) -> Result<()> {
+fn download(runtime: &Runtime, destination: &Path, report: &impl Fn(LaunchProgress)) -> Result<()> {
+    let progress = ProgressCounter::new(|current| {
+        report(LaunchProgress::Downloading {
+            current,
+            total: Some(runtime.bytes),
+            message: "Java 25 다운로드 중",
+        })
+    });
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(600))
@@ -173,19 +182,24 @@ fn download(runtime: &Runtime, destination: &Path) -> Result<()> {
         if count == 0 {
             break;
         }
+        bytes += count as u64;
+        if bytes > runtime.bytes {
+            return Err("Java archive exceeded its expected size".into());
+        }
         let chunk = &buffer[..count];
         file.write_all(chunk)?;
         hash.update(chunk);
-        bytes += count as u64;
+        progress.advance(count as u64);
     }
     if bytes != runtime.bytes || format!("{:x}", hash.finalize()) != runtime.sha256 {
         return Err("Java archive size or SHA-256 did not match".into());
     }
     file.sync_all()?;
+    progress.finish();
     Ok(())
 }
 
-pub fn prepare(base: &Path) -> Result<PathBuf> {
+pub fn prepare(base: &Path, report: impl Fn(LaunchProgress)) -> Result<PathBuf> {
     let _guard = PREPARATION
         .lock()
         .map_err(|_| "Java preparation lock failed")?;
@@ -199,6 +213,9 @@ pub fn prepare(base: &Path) -> Result<PathBuf> {
     }
     #[cfg(windows)]
     if destination.join(runtime.archive_executable).is_file() {
+        report(LaunchProgress::Status {
+            message: "Java 25 설치 확인 중",
+        });
         install_launcher(&destination, &executable)?;
         return Ok(executable);
     }
@@ -206,7 +223,10 @@ pub fn prepare(base: &Path) -> Result<PathBuf> {
     fs::create_dir_all(base)?;
     let work = tempfile::tempdir_in(base)?;
     let archive = work.path().join(runtime.archive);
-    download(&runtime, &archive)?;
+    download(&runtime, &archive, &report)?;
+    report(LaunchProgress::Status {
+        message: "Java 25 압축 해제 중",
+    });
     let extracted = work.path().join("extracted");
     fs::create_dir(&extracted)?;
     if runtime.archive.ends_with(".zip") {
@@ -225,6 +245,9 @@ pub fn prepare(base: &Path) -> Result<PathBuf> {
     if directories.next().is_some() {
         return Err("Java archive contains more than one runtime".into());
     }
+    report(LaunchProgress::Status {
+        message: "Java 25 설치 확인 중",
+    });
     #[cfg(windows)]
     install_launcher(&root, &root.join(runtime.executable))?;
     #[cfg(not(windows))]
@@ -261,19 +284,32 @@ mod tests {
     fn downloads_and_reuses_java_25() -> Result<()> {
         let cache = tempfile::tempdir()?;
         assert!(cached_executable(cache.path()).is_none());
-        let executable = prepare(cache.path())?;
+        let updates = std::cell::RefCell::new(Vec::new());
+        let executable = prepare(cache.path(), |update| updates.borrow_mut().push(update))?;
+        let updates = updates.into_inner();
+        assert!(matches!(
+            updates.first(),
+            Some(LaunchProgress::Downloading { current: 0, .. })
+        ));
+        assert!(updates.windows(2).any(|pair| matches!(pair, [
+            LaunchProgress::Downloading { current, total: Some(total), .. },
+            LaunchProgress::Status { message: "Java 25 압축 해제 중" }
+        ] if current == total)));
         assert!(executable.is_file());
         let stock = executable.with_file_name(if cfg!(windows) { "java.exe" } else { "java" });
         assert_eq!(validate_custom(&stock)?, stock);
         assert_eq!(cached_executable(cache.path()).as_ref(), Some(&executable));
         let marker = cache_destination(cache.path()).join("cache-check");
         fs::write(&marker, b"first preparation")?;
-        assert_eq!(prepare(cache.path())?, executable);
+        assert_eq!(
+            prepare(cache.path(), |_| panic!("cached Java should be reused"))?,
+            executable
+        );
         assert_eq!(fs::read_to_string(marker)?, "first preparation");
         #[cfg(windows)]
         {
             fs::remove_file(&executable)?;
-            assert_eq!(prepare(cache.path())?, executable);
+            assert_eq!(prepare(cache.path(), |_| {})?, executable);
             assert!(executable.is_file());
         }
         Ok(())

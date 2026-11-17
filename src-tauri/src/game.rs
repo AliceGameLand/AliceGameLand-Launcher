@@ -12,12 +12,13 @@ use serde::Deserialize;
 use tauri::ipc::Channel;
 
 use crate::{
-    artifacts::{self, Result},
+    artifacts::{self, LaunchProgress, Result},
     auth::GameSession,
     distribution::{Distribution, Loader, Server},
     java,
     minecraft::{self, Arguments, Version},
     preferences::{GameSettings, JavaOptions},
+    validation_cache::ValidationCache,
 };
 
 static PREPARATION: Mutex<()> = Mutex::new(());
@@ -73,11 +74,17 @@ fn prepare_files(
     root: &Path,
     server_id: &str,
     custom_java: Option<&Path>,
-    progress: &Channel<&'static str>,
+    progress: &Channel<LaunchProgress>,
 ) -> Result<(Server, PathBuf)> {
     if !root.is_absolute() {
         return Err("게임 데이터 폴더는 절대 경로여야 해요.".into());
     }
+    let report = |event| {
+        let _ = progress.send(event);
+    };
+    report(LaunchProgress::Status {
+        message: "서버 배포 목록 확인 중",
+    });
     let client = artifacts::client()?;
     let distribution = Distribution::refresh(&client, &profile.join("distribution.json"))?;
     let server = distribution
@@ -86,17 +93,30 @@ fn prepare_files(
         .find(|server| server.id == server_id)
         .ok_or("배포 목록에서 서버를 찾지 못했어요.")?;
 
-    let _ = progress.send("Java 25 확인 중");
+    report(LaunchProgress::Status {
+        message: "Java 25 확인 중",
+    });
     let java = match custom_java {
         Some(path) => java::validate_custom(path)?,
-        None => java::prepare(&profile.join("java"))?,
+        None => java::prepare(&profile.join("java"), &report)?,
     };
-    let _ = progress.send("게임 파일 확인 중");
+    report(LaunchProgress::Status {
+        message: "게임 파일 목록 확인 중",
+    });
     fs::create_dir_all(root)?;
     let canonical_root = root.canonicalize()?;
-    artifacts::ensure_all(&client, &canonical_root, &server.files()?)?;
-    let vanilla = minecraft::files(&client, &canonical_root, &server.minecraft_version)?;
-    artifacts::ensure_all(&client, &canonical_root, &vanilla)?;
+    let cache = ValidationCache::load(&profile.join("validation-cache-v1.json"));
+    let mut files = server.files()?;
+    files.extend(minecraft::files(
+        &client,
+        &canonical_root,
+        &server.minecraft_version,
+        &cache,
+    )?);
+    let prepared = artifacts::ensure_all(&client, &canonical_root, &files, &cache, report);
+    // Verified files remain reusable after an interrupted transfer. Cache persistence is best effort.
+    let _ = cache.flush();
+    prepared?;
     Ok((server, java))
 }
 
@@ -291,7 +311,7 @@ struct PreparedLaunch {
 fn prepare_launch(
     launch: Launch,
     session: GameSession,
-    progress: &Channel<&'static str>,
+    progress: &Channel<LaunchProgress>,
 ) -> Result<PreparedLaunch> {
     let (server, java) = prepare_files(
         &launch.profile,
@@ -320,7 +340,9 @@ fn prepare_launch(
         return Err("서버와 게임 로더의 Minecraft 버전이 일치하지 않아요.".into());
     }
     if let Some((version, installer)) = &loader.installer {
-        let _ = progress.send("NeoForge 확인 중");
+        let _ = progress.send(LaunchProgress::Status {
+            message: "NeoForge 확인 중",
+        });
         install_neoforge(&common, &java, version, installer)?;
     }
 
@@ -462,7 +484,7 @@ pub enum ProcessEvent {
 pub fn play(
     launch: Launch,
     session: GameSession,
-    progress: Channel<&'static str>,
+    progress: Channel<LaunchProgress>,
     on_event: impl Fn(ProcessEvent) + Send + 'static,
 ) -> Result<u32> {
     let running = RunningGame::reserve(launch.server_id.clone())?;
@@ -474,7 +496,9 @@ pub fn play(
         mut command,
         natives,
     } = prepare_launch(launch, session, &progress)?;
-    let _ = progress.send("게임 시작 중");
+    let _ = progress.send(LaunchProgress::Status {
+        message: "게임 시작 중",
+    });
     let mut child = command.spawn()?;
     let pid = child.id();
     on_event(ProcessEvent::Started);
