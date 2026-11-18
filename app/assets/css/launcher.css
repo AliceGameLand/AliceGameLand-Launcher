@@ -549,15 +549,20 @@ input { caret-color: var(--blue); accent-color: var(--blue); }
 #loadingBar::before {
     display: block;
     content: '';
-    width: 35%;
+    width: 36%;
     height: 100%;
     background: #ffffff;
-    animation: launch-pending 1.6s cubic-bezier(.45, 0, .55, 1) infinite alternate;
+    animation: loadSlide 1.6s ease-in-out infinite;
 }
 
 @keyframes loadEnter {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes loadSlide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(280%); }
 }
 
 @keyframes launcher-reveal {
@@ -1724,8 +1729,8 @@ input:checked + .toggleSwitchSlider:before {
     #settingsContainer #settingsGameResolutionContainer { align-items: flex-start; flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
-    #launch_progress:indeterminate + .launch-pending-track::before, #loadingBar::before { animation: none; transform: translateX(93%); }
-    .launch-pending-track::before, #loadingBar::before { transition-property: none; }
+    #launch_progress:indeterminate + .launch-pending-track::before { animation: none; transform: translateX(93%); }
+    .launch-pending-track::before { transition-property: none; }
     #loadingContent, #loadingBar::before { animation: none; }
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
